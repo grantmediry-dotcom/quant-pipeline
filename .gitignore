@@ -39,5 +39,8 @@ Thumbs.db
 *.tmp
 *.bak
 
+# 同步日志
+scripts/sync.log
+
 # Ray 的框架（参考用，不纳入我们的版本控制）
 Ray/

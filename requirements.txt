@@ -1,0 +1,6 @@
+tushare
+pandas
+numpy
+scipy
+matplotlib
+pyarrow

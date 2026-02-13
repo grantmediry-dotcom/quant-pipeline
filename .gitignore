@@ -1,0 +1,43 @@
+# 数据文件（体积大，不适合版本控制）
+data/*.parquet
+data/*.csv
+
+# 输出文件（每次运行重新生成）
+output/*.png
+output/*.csv
+output/*.txt
+
+# 保留 factor_registry.json（因子元数据有版本控制价值）
+!output/factor_registry.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# 临时文件（原子写入产生的）
+*.tmp
+*.bak
+
+# Ray 的框架（参考用，不纳入我们的版本控制）
+Ray/

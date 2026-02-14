@@ -8,12 +8,16 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import TOP_N
+from core.agent_base import BaseAgent
 
 
-class PortfolioAgent:
+class PortfolioAgent(BaseAgent):
     """组合Agent：Top-N选股 + 等权配置"""
 
+    agent_name = "PortfolioAgent"
+
     def __init__(self, top_n: int = TOP_N):
+        super().__init__()
         self.top_n = top_n
         print(f"[PortfolioAgent] 初始化完成，每期选 {top_n} 只")
 

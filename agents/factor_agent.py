@@ -17,17 +17,20 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import DATA_DIR, OUTPUT_DIR
 from utils.helpers import save_parquet, load_parquet, ensure_dir
+from core.agent_base import BaseAgent
 
 
-class FactorAgent:
+class FactorAgent(BaseAgent):
     """因子Agent：注册表驱动的因子计算与检验"""
 
+    agent_name = "FactorAgent"
+
     def __init__(self, daily_quotes: pd.DataFrame):
+        super().__init__()
         self.df = daily_quotes.copy()
         self.df = self.df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
         self.factors = None
 
-        # 导入 factors 包以触发 @register_factor 注册
         import factors  # noqa: F401
         from factor_framework.registry import FactorRegistry
         self.registry = FactorRegistry()
@@ -76,6 +79,12 @@ class FactorAgent:
         df["fwd_ret_1m"] = df.groupby("ts_code")["close"].transform(
             lambda x: x.shift(-20) / x - 1
         )
+
+        # 排除 IPO 期数据（上市前5个交易日，价格异常不参与因子评估）
+        if "is_ipo_period" in df.columns:
+            n_before_ipo = len(df)
+            df = df[df["is_ipo_period"] == 0]
+            print(f"  排除 IPO 期: {n_before_ipo - len(df)} 行")
 
         # 构建结果
         base_cols = ["ts_code", "trade_date", "close", "ret"]
@@ -140,6 +149,15 @@ class FactorAgent:
         # 持久化更新后的注册表（含评价指标）
         registry_path = os.path.join(OUTPUT_DIR, "factor_registry.json")
         self.registry.save_to_disk(registry_path)
+
+        # V3: 发出因子检验结果信号
+        test_results = {}
+        for _, row in result_df.iterrows():
+            test_results[row["因子名称"]] = {
+                "ic_mean": row["RankIC均值"],
+                "ir": row["IR"],
+            }
+        self.emit("factors.tested", {"results": test_results})
 
         print("[FactorAgent] 单因子检验完成")
         return result_df

@@ -8,14 +8,18 @@ import pandas as pd
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config.settings import DATA_DIR, OUTPUT_DIR
+from config.settings import DATA_DIR, OUTPUT_DIR, TRADE_COST_BUY, TRADE_COST_SELL
 from utils.helpers import ensure_dir
+from core.agent_base import BaseAgent
 
 
-class BacktestAgent:
+class BacktestAgent(BaseAgent):
     """回测Agent：月度调仓回测"""
 
+    agent_name = "BacktestAgent"
+
     def __init__(self, daily_quotes: pd.DataFrame, benchmark: pd.DataFrame):
+        super().__init__()
         self.quotes = daily_quotes[["ts_code", "trade_date", "close"]].copy()
         self.benchmark = benchmark.copy()
         print("[BacktestAgent] 初始化完成")
@@ -39,10 +43,15 @@ class BacktestAgent:
         current_nav = 1.0
         current_holdings = None
         pending_holdings = None  # 待生效的新持仓
+        total_cost = 0.0
 
         for i, td in enumerate(all_trade_dates):
             # 先应用上一日挂起的调仓（T+1 生效）
             if pending_holdings is not None:
+                # 计算换手成本
+                cost = self._calc_turnover_cost(current_holdings, pending_holdings)
+                current_nav *= (1 - cost)
+                total_cost += cost
                 current_holdings = pending_holdings
                 pending_holdings = None
 
@@ -71,6 +80,8 @@ class BacktestAgent:
 
             nav_records.append({"trade_date": td, "nav": current_nav})
 
+        print(f"[BacktestAgent] 累计交易成本: {total_cost:.2%}")
+
         nav_df = pd.DataFrame(nav_records)
 
         # 合并基准
@@ -90,6 +101,32 @@ class BacktestAgent:
 
         print("[BacktestAgent] 回测完成")
         return nav_df
+
+    @staticmethod
+    def _calc_turnover_cost(old_holdings, new_holdings) -> float:
+        """
+        计算调仓换手成本
+        买入成本 TRADE_COST_BUY，卖出成本 TRADE_COST_SELL
+        """
+        if old_holdings is None:
+            # 首次建仓，只有买入成本
+            return TRADE_COST_BUY
+
+        old = old_holdings.set_index("ts_code")["weight"]
+        new = new_holdings.set_index("ts_code")["weight"]
+
+        # 合并新旧持仓
+        all_codes = old.index.union(new.index)
+        old_w = old.reindex(all_codes, fill_value=0)
+        new_w = new.reindex(all_codes, fill_value=0)
+
+        # 买入量和卖出量
+        delta = new_w - old_w
+        buy_amount = delta[delta > 0].sum()    # 新买入的权重
+        sell_amount = (-delta[delta < 0]).sum()  # 卖出的权重
+
+        cost = buy_amount * TRADE_COST_BUY + sell_amount * TRADE_COST_SELL
+        return cost
 
     @staticmethod
     def calc_metrics(nav_df: pd.DataFrame) -> dict:

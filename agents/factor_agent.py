@@ -39,23 +39,39 @@ class FactorAgent(BaseAgent):
         print(f"[FactorAgent] 初始化完成，已注册 {len(enabled)} 个启用因子")
 
     def compute_factors(self) -> pd.DataFrame:
-        """通过注册表计算所有启用的因子"""
-        cache_path = os.path.join(DATA_DIR, "factors_v2.parquet")
-        cached = load_parquet(cache_path)
-        if cached is not None:
-            print(f"[FactorAgent] 因子数据已缓存，共 {len(cached)} 行")
-            self.factors = cached
-            return cached
+        """
+        通过注册表计算所有启用的因子（增量缓存版）
 
+        每个因子独立缓存为 data/factor_{name}.parquet，
+        新增因子只需计算新的，不影响已有缓存。
+        """
         print("[FactorAgent] 正在计算因子...")
         df = self.df.copy()
 
         # 日收益率（非因子，但多个因子的计算基础）
         df["ret"] = df.groupby("ts_code")["close"].pct_change()
 
-        # 通过注册表逐个计算因子
+        # 通过注册表逐个计算因子（增量：有缓存则跳过）
         enabled_names = self.registry.list_factors(enabled_only=True)
+        factor_cache_dir = os.path.join(DATA_DIR, "factors")
+        ensure_dir(factor_cache_dir)
+
         for fname in enabled_names:
+            cache_path = os.path.join(factor_cache_dir, f"{fname}.parquet")
+            cached = load_parquet(cache_path)
+
+            if cached is not None and fname in cached.columns:
+                # 从缓存加载，按 index 对齐
+                df = df.merge(
+                    cached[["ts_code", "trade_date", fname]],
+                    on=["ts_code", "trade_date"], how="left", suffixes=("", "_cached")
+                )
+                if f"{fname}_cached" in df.columns:
+                    df[fname] = df[f"{fname}_cached"]
+                    df = df.drop(columns=[f"{fname}_cached"])
+                print(f"  {fname}: 已从缓存加载")
+                continue
+
             instance = self.registry.create_instance(fname)
 
             ts = datetime.now()
@@ -71,6 +87,10 @@ class FactorAgent(BaseAgent):
 
             # 清洗（Inf→NaN, winsorize）
             df[fname] = instance.clean(df[fname])
+
+            # 独立缓存此因子
+            factor_df = df[["ts_code", "trade_date", fname]].copy()
+            save_parquet(factor_df, cache_path)
 
             print(f"  {instance.metadata.display_name}({fname}): "
                   f"耗时 {elapsed:.1f}s, NaN={quality['nan_ratio']:.1%}")
@@ -91,7 +111,6 @@ class FactorAgent(BaseAgent):
         factor_cols = base_cols + enabled_names + ["fwd_ret_1m"]
         result = df[factor_cols].dropna(subset=[enabled_names[0], "fwd_ret_1m"])
 
-        save_parquet(result, cache_path)
         self.factors = result
         print(f"[FactorAgent] 因子计算完成，共 {len(result)} 行")
 
@@ -182,7 +201,11 @@ class FactorAgent(BaseAgent):
         return pd.DataFrame(ic_list)["ic"] if ic_list else pd.Series(dtype=float)
 
     def get_factor_scores(self, date: str) -> pd.DataFrame:
-        """获取指定日期的因子截面数据（供 AlphaAgent 使用）"""
+        """
+        获取指定日期的因子截面数据（供 AlphaAgent 使用）
+
+        流程：市值中性化 → 截面 z-score 标准化
+        """
         if self.factors is None:
             self.compute_factors()
 
@@ -197,6 +220,10 @@ class FactorAgent(BaseAgent):
                 if snapshot[f].notna().sum() > 0 and nan_ratio < 0.5:
                     available.append(f)
 
+        # 市值中性化：对每个因子回归剥离 log(市值) 的影响
+        if "close" in snapshot.columns and len(snapshot) > 50:
+            self._neutralize_market_cap(snapshot, available)
+
         # 截面标准化（z-score）
         for fname in available:
             col = snapshot[fname]
@@ -207,6 +234,36 @@ class FactorAgent(BaseAgent):
                 snapshot[fname] = 0
 
         return snapshot[["ts_code"] + available].dropna()
+
+    @staticmethod
+    def _neutralize_market_cap(snapshot: pd.DataFrame, factor_names: list):
+        """
+        市值中性化：OLS 回归剥离 log(成交额) 对因子的线性影响
+        使用 20 日均成交额的 log 作为市值代理
+        """
+        if "close" not in snapshot.columns:
+            return
+
+        # 用 close 作为市值代理（日线数据中最稳定的规模指标）
+        log_size = np.log(snapshot["close"].clip(lower=0.01))
+        valid = log_size.notna()
+
+        for fname in factor_names:
+            col = snapshot[fname]
+            mask = valid & col.notna()
+            if mask.sum() < 50:
+                continue
+
+            x = log_size[mask].values
+            y = col[mask].values
+
+            # OLS: y = a + b*x + residual
+            x_mean = x.mean()
+            y_mean = y.mean()
+            b = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
+            a = y_mean - b * x_mean
+            residual = col - (a + b * log_size)
+            snapshot[fname] = residual
 
 
 if __name__ == "__main__":

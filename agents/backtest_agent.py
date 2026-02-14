@@ -22,6 +22,11 @@ class BacktestAgent(BaseAgent):
         super().__init__()
         self.quotes = daily_quotes[["ts_code", "trade_date", "close"]].copy()
         self.benchmark = benchmark.copy()
+        # 保留跌停标记用于卖出限制
+        if "is_limit_down" in daily_quotes.columns:
+            self.limit_down = daily_quotes[["ts_code", "trade_date", "is_limit_down"]].copy()
+        else:
+            self.limit_down = None
         print("[BacktestAgent] 初始化完成")
 
     def run(self, holdings_by_date: dict[str, pd.DataFrame]) -> pd.DataFrame:

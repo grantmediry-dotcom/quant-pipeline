@@ -83,12 +83,27 @@ class Orchestrator:
         factors_df["month"] = factors_df["trade_date"].str[:6]
         month_ends = factors_df.groupby("month")["trade_date"].max().values
 
+        # 预计算流动性过滤：20日均成交额 < 1000万元(amount单位千元,阈值10000)
+        daily_quotes["_avg_amount_20d"] = daily_quotes.groupby("ts_code")["amount"].transform(
+            lambda x: x.rolling(20, min_periods=10).mean()
+        )
+
         holdings_by_date = {}
         for date in sorted(month_ends):
             scores = factor_agent.get_factor_scores(date)
             if len(scores) < 50:
                 continue
             alpha_scores = alpha_agent.composite_score(scores)
+
+            # 过滤流动性不足的股票（日均成交额 < 1000万元）
+            illiquid_codes = daily_quotes[
+                (daily_quotes["trade_date"] == date) &
+                (daily_quotes["_avg_amount_20d"] < 10000)
+            ]["ts_code"].tolist()
+            if illiquid_codes:
+                alpha_scores = alpha_scores[
+                    ~alpha_scores["ts_code"].isin(illiquid_codes)
+                ]
 
             # 过滤涨停股票（涨停无法买入）
             if "is_limit_up" in daily_quotes.columns:

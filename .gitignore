@@ -44,3 +44,11 @@ scripts/sync.log
 
 # Ray 的框架（参考用，不纳入我们的版本控制）
 Ray/
+
+# 研究文档（二进制文件不适合 Git）
+*.docx
+*.xlsx
+*.pptx
+*.png
+*.jpg
+*.pdf

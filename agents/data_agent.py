@@ -110,6 +110,7 @@ class DataAgent(BaseAgent):
         print(f"  预计耗时: {len(trade_dates) * API_DELAY / 60:.1f} 分钟")
 
         all_data = []
+        failed_dates = []
         for i, date in enumerate(trade_dates):
             try:
                 df = self.pro.daily(trade_date=date)
@@ -126,8 +127,35 @@ class DataAgent(BaseAgent):
 
             except Exception as e:
                 print(f"  {date} 拉取失败: {e}")
+                failed_dates.append(date)
                 time.sleep(2)
                 continue
+
+        # 重试失败的日期（最多3轮）
+        for retry in range(3):
+            if not failed_dates:
+                break
+            print(f"  重试第 {retry + 1} 轮，共 {len(failed_dates)} 个失败日期")
+            still_failed = []
+            for date in failed_dates:
+                try:
+                    time.sleep(2)
+                    df = self.pro.daily(trade_date=date)
+                    time.sleep(API_DELAY)
+                    if df is not None and not df.empty:
+                        df = df[~df["ts_code"].str.endswith(".BJ")]
+                        all_data.append(df[["ts_code", "trade_date",
+                                            "open", "high", "low", "close",
+                                            "vol", "amount", "pre_close"]])
+                        print(f"    {date} 重试成功")
+                    else:
+                        still_failed.append(date)
+                except Exception:
+                    still_failed.append(date)
+            failed_dates = still_failed
+
+        if failed_dates:
+            print(f"  警告: {len(failed_dates)} 个日期最终失败: {failed_dates}")
 
         print("[DataAgent] 合并行情数据...")
         result = pd.concat(all_data, ignore_index=True)
@@ -188,15 +216,25 @@ class DataAgent(BaseAgent):
         else:
             df["is_ipo_period"] = 0
 
-        # 3. 标记涨跌停（用 pre_close 判断）
+        # 3. 标记涨跌停（用 pre_close 判断，区分不同板块涨跌停幅度）
         if "pre_close" in df.columns and df["pre_close"].notna().sum() > 0:
             df["pct_chg"] = (df["close"] / df["pre_close"] - 1) * 100
-            # 涨停：涨幅 >= 9.5%（考虑精度）  跌停：跌幅 <= -9.5%
-            df["is_limit_up"] = (df["pct_chg"] >= 9.5).astype(int)
-            df["is_limit_down"] = (df["pct_chg"] <= -9.5).astype(int)
+
+            # 确定每只股票的涨跌停阈值
+            # 科创板(688开头): ±20%  创业板(300开头,2020-08-24起): ±20%  其他: ±10%
+            is_star = df["ts_code"].str.startswith("688")  # 科创板
+            is_gem = df["ts_code"].str.startswith("300")   # 创业板
+            gem_reform = df["trade_date"] >= "20200824"     # 创业板注册制日期
+
+            limit_pct = pd.Series(9.5, index=df.index)     # 默认主板 10%（留精度余量）
+            limit_pct[is_star] = 19.5                       # 科创板 20%
+            limit_pct[is_gem & gem_reform] = 19.5           # 创业板 20%（注册制后）
+
+            df["is_limit_up"] = (df["pct_chg"] >= limit_pct).astype(int)
+            df["is_limit_down"] = (df["pct_chg"] <= -limit_pct).astype(int)
             limit_up = df["is_limit_up"].sum()
             limit_down = df["is_limit_down"].sum()
-            print(f"  标记涨停: {limit_up} 行, 跌停: {limit_down} 行")
+            print(f"  标记涨停: {limit_up} 行, 跌停: {limit_down} 行（含科创板/创业板20%）")
         else:
             df["pct_chg"] = 0
             df["is_limit_up"] = 0

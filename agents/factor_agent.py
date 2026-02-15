@@ -204,7 +204,7 @@ class FactorAgent(BaseAgent):
         """
         获取指定日期的因子截面数据（供 AlphaAgent 使用）
 
-        流程：市值中性化 → 截面 z-score 标准化
+        流程：截面 z-score 标准化
         """
         if self.factors is None:
             self.compute_factors()
@@ -220,9 +220,9 @@ class FactorAgent(BaseAgent):
                 if snapshot[f].notna().sum() > 0 and nan_ratio < 0.5:
                     available.append(f)
 
-        # 市值中性化：对每个因子回归剥离 log(市值) 的影响
-        if "close" in snapshot.columns and len(snapshot) > 50:
-            self._neutralize_market_cap(snapshot, available)
+        # 注：市值中性化暂不启用（_neutralize_market_cap 方法保留备用）
+        # 测试发现当前阶段因子 alpha 与规模暴露混合，强制中性化会消除有效信号。
+        # 待因子库扩充后，可考虑对非规模类因子启用中性化。
 
         # 截面标准化（z-score）
         for fname in available:

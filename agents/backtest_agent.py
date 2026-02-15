@@ -53,11 +53,15 @@ class BacktestAgent(BaseAgent):
         for i, td in enumerate(all_trade_dates):
             # 先应用上一日挂起的调仓（T+1 生效）
             if pending_holdings is not None:
+                # 跌停不可卖：检查待卖出股票是否跌停
+                actual_new = self._apply_limit_down_constraint(
+                    current_holdings, pending_holdings, td
+                )
                 # 计算换手成本
-                cost = self._calc_turnover_cost(current_holdings, pending_holdings)
+                cost = self._calc_turnover_cost(current_holdings, actual_new)
                 current_nav *= (1 - cost)
                 total_cost += cost
-                current_holdings = pending_holdings
+                current_holdings = actual_new
                 pending_holdings = None
 
             # 如果今天是调仓日，挂起新持仓（明天生效）
@@ -106,6 +110,59 @@ class BacktestAgent(BaseAgent):
 
         print("[BacktestAgent] 回测完成")
         return nav_df
+
+    def _apply_limit_down_constraint(
+        self, old_holdings, new_holdings, trade_date: str
+    ) -> pd.DataFrame:
+        """
+        跌停不可卖约束：待卖出的股票若当日跌停，则强制保留。
+
+        处理逻辑：
+        1. 找出需要卖出的股票（在旧持仓但不在新持仓中）
+        2. 检查哪些跌停，这些股票保留旧权重
+        3. 新持仓权重按比例缩放，腾出空间给被迫保留的股票
+        """
+        if old_holdings is None or self.limit_down is None:
+            return new_holdings
+
+        old_codes = set(old_holdings["ts_code"].values)
+        new_codes = set(new_holdings["ts_code"].values)
+        sell_codes = old_codes - new_codes  # 准备卖出的股票
+
+        if not sell_codes:
+            return new_holdings
+
+        # 查询当日跌停状态
+        ld_today = self.limit_down[self.limit_down["trade_date"] == trade_date]
+        ld_codes = set(
+            ld_today[ld_today["is_limit_down"] == 1]["ts_code"].values
+        )
+
+        # 跌停且需要卖出的股票
+        forced_hold = sell_codes & ld_codes
+        if not forced_hold:
+            return new_holdings
+
+        # 被迫保留的股票及其旧权重
+        old_w = old_holdings.set_index("ts_code")["weight"]
+        forced_weight = old_w.reindex(list(forced_hold), fill_value=0).sum()
+
+        # 新持仓按比例缩放，为被迫保留的股票腾出权重
+        scale = max(1 - forced_weight, 0.01)
+        adjusted = new_holdings.copy()
+        adjusted["weight"] = adjusted["weight"] * scale
+
+        # 合并被迫保留的持仓
+        forced_df = pd.DataFrame({
+            "ts_code": list(forced_hold),
+            "weight": [old_w[c] for c in forced_hold],
+        })
+        result = pd.concat([adjusted, forced_df], ignore_index=True)
+
+        print(f"  [跌停限制] {trade_date}: {len(forced_hold)} 只跌停无法卖出，"
+              f"占权重 {forced_weight:.1%}")
+
+        return result
 
     @staticmethod
     def _calc_turnover_cost(old_holdings, new_holdings) -> float:

@@ -109,7 +109,12 @@ class FactorAgent(BaseAgent):
         # 构建结果
         base_cols = ["ts_code", "trade_date", "close", "ret"]
         factor_cols = base_cols + enabled_names + ["fwd_ret_1m"]
-        result = df[factor_cols].dropna(subset=[enabled_names[0], "fwd_ret_1m"])
+        if not enabled_names:
+            raise RuntimeError("[FactorAgent] 没有可用的启用因子，请先检查因子注册配置。")
+
+        # 仅保留未来收益存在且至少一个因子有效的样本，避免被单一因子绑架样本筛选
+        factor_valid = df[enabled_names].notna().any(axis=1)
+        result = df.loc[factor_valid & df["fwd_ret_1m"].notna(), factor_cols]
 
         self.factors = result
         print(f"[FactorAgent] 因子计算完成，共 {len(result)} 行")

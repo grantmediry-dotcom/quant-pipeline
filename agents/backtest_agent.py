@@ -79,11 +79,20 @@ class BacktestAgent(BaseAgent):
                 prev_prices = self.quotes[self.quotes["trade_date"] == prev_td][["ts_code", "close"]]
                 prev_prices = prev_prices.rename(columns={"close": "prev_close"})
 
-                merged = current_holdings.merge(today_prices, on="ts_code", how="inner")
-                merged = merged.merge(prev_prices, on="ts_code", how="inner")
+                # 保留全部持仓：缺失行情按当日0收益处理，避免因 inner merge 造成隐式仓位漂移
+                merged = current_holdings.merge(today_prices, on="ts_code", how="left")
+                merged = merged.merge(prev_prices, on="ts_code", how="left")
 
                 if len(merged) > 0:
-                    merged["stock_ret"] = merged["close"] / merged["prev_close"] - 1
+                    merged["stock_ret"] = 0.0
+                    valid_price = (
+                        merged["close"].notna()
+                        & merged["prev_close"].notna()
+                        & (merged["prev_close"] > 0)
+                    )
+                    merged.loc[valid_price, "stock_ret"] = (
+                        merged.loc[valid_price, "close"] / merged.loc[valid_price, "prev_close"] - 1
+                    )
                     portfolio_ret = (merged["weight"] * merged["stock_ret"]).sum()
                     current_nav *= (1 + portfolio_ret)
 

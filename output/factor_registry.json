@@ -17,11 +17,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": -0.06,
-    "eval_ir": -0.4593
+    "eval_ic_mean": -0.0607,
+    "eval_ir": -0.4612
   },
   "reversal_5d": {
     "name": "reversal_5d",
@@ -41,11 +41,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": 0.0357,
-    "eval_ir": 0.3536
+    "eval_ic_mean": 0.0336,
+    "eval_ir": 0.3292
   },
   "turnover_20d": {
     "name": "turnover_20d",
@@ -67,11 +67,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": -0.107,
-    "eval_ir": -0.6949
+    "eval_ic_mean": -0.1027,
+    "eval_ir": -0.6473
   },
   "volatility_20d": {
     "name": "volatility_20d",
@@ -92,11 +92,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": 0.1097,
-    "eval_ir": 0.659
+    "eval_ic_mean": 0.1046,
+    "eval_ir": 0.6074
   },
   "size_factor": {
     "name": "size_factor",
@@ -118,11 +118,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": 0.0934,
-    "eval_ir": 0.613
+    "eval_ic_mean": 0.0936,
+    "eval_ir": 0.6117
   },
   "swim_against_tide": {
     "name": "swim_against_tide",
@@ -143,10 +143,167 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-15 08:53:10",
-    "updated_at": "2026-02-15 08:53:10",
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
     "lineage": {},
-    "eval_ic_mean": 0.0358,
-    "eval_ir": 0.5262
+    "eval_ic_mean": 0.0341,
+    "eval_ir": 0.496
+  },
+  "illiquidity_20d": {
+    "name": "illiquidity_20d",
+    "display_name": "非流动性",
+    "category": "流动性",
+    "direction": 1,
+    "description": "Amihud非流动性：过去20日 mean(|daily_return| / amount)，衡量价格冲击成本",
+    "formula": "mean(|close/pre_close - 1| / amount, 20)",
+    "parameters": {
+      "window": 20,
+      "min_periods": 10
+    },
+    "data_sources": [
+      "close",
+      "pre_close",
+      "amount"
+    ],
+    "lookback_days": 20,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": 0.0693,
+    "eval_ir": 0.4461
+  },
+  "max_return_1m": {
+    "name": "max_return_1m",
+    "display_name": "月内最大涨幅",
+    "category": "动量",
+    "direction": -1,
+    "description": "过去22个交易日内单日最大涨幅，捕捉彩票效应/投机情绪",
+    "formula": "max(daily_return, 22)",
+    "parameters": {
+      "window": 22,
+      "min_periods": 10
+    },
+    "data_sources": [
+      "close"
+    ],
+    "lookback_days": 22,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": -0.0958,
+    "eval_ir": -0.69
+  },
+  "vwap_ratio_5d60d": {
+    "name": "vwap_ratio_5d60d",
+    "display_name": "均价比5/60",
+    "category": "反转",
+    "direction": -1,
+    "description": "5日VWAP与60日VWAP的比值，捕捉短期相对长期的价格偏离程度",
+    "formula": "(sum(amount,5)/sum(vol,5)) / (sum(amount,60)/sum(vol,60))",
+    "parameters": {
+      "short_window": 5,
+      "long_window": 60,
+      "min_periods_long": 30
+    },
+    "data_sources": [
+      "amount",
+      "vol"
+    ],
+    "lookback_days": 60,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": -0.0701,
+    "eval_ir": -0.4627
+  },
+  "amount_ratio_1m3m": {
+    "name": "amount_ratio_1m3m",
+    "display_name": "成交额比率",
+    "category": "流动性",
+    "direction": -1,
+    "description": "近22日均成交额与近66日均成交额的比值，捕捉流动性变化趋势",
+    "formula": "mean(amount, 22) / mean(amount, 66)",
+    "parameters": {
+      "short_window": 22,
+      "long_window": 66,
+      "min_periods_long": 30
+    },
+    "data_sources": [
+      "amount"
+    ],
+    "lookback_days": 66,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": -0.0598,
+    "eval_ir": -0.4821
+  },
+  "highlow_ratio_20d": {
+    "name": "highlow_ratio_20d",
+    "display_name": "高低价比",
+    "category": "风险",
+    "direction": -1,
+    "description": "过去20日最高价与最低价的比值，衡量价格区间振幅",
+    "formula": "max(high, 20) / min(low, 20)",
+    "parameters": {
+      "window": 20,
+      "min_periods": 10
+    },
+    "data_sources": [
+      "high",
+      "low"
+    ],
+    "lookback_days": 20,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": -0.0921,
+    "eval_ir": -0.55
+  },
+  "price_volume_corr_20d": {
+    "name": "price_volume_corr_20d",
+    "display_name": "价量相关性",
+    "category": "资金流",
+    "direction": -1,
+    "description": "过去20日收盘价与成交量的Pearson相关系数，捕捉量价背离/同步信号",
+    "formula": "corr(close, vol, 20)",
+    "parameters": {
+      "window": 20,
+      "min_periods": 10
+    },
+    "data_sources": [
+      "close",
+      "vol"
+    ],
+    "lookback_days": 20,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 15:19:12",
+    "updated_at": "2026-02-16 15:19:12",
+    "lineage": {},
+    "eval_ic_mean": -0.0508,
+    "eval_ir": -0.5544
   }
 }

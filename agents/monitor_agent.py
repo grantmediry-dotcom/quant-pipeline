@@ -103,7 +103,7 @@ class MonitorAgent(BaseAgent):
         lines.append("【三、策略说明】")
         lines.append("  选股域: 中证1000成分股")
         lines.append("  因子: 动量20d、反转5d、换手率20d、波动率20d、市值")
-        lines.append("  合成方式: 等权合成")
+        lines.append("  合成方式: 动态（Monitor IC加权；无权重信号时回退等权）")
         lines.append("  选股: Top50 等权配置")
         lines.append("  调仓频率: 月度")
         lines.append("")

@@ -1,8 +1,15 @@
 """全局配置"""
 import os
 
-# Tushare 配置
-TUSHARE_TOKEN = "09851f85493b02bb928aa1b9e4d7a4ff1c2b7dc7d29bbde2fa57c22b"
+# Tushare 配置（请在环境变量中设置，避免明文凭据进入仓库）
+# PowerShell: $env:TUSHARE_TOKEN="your_token_here"
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "").strip()
+# 价格复权模式：qfq（前复权）/ hfq（后复权）/ none（不复权）
+# PowerShell: $env:PRICE_ADJ_MODE="qfq"
+PRICE_ADJ_MODE = os.getenv("PRICE_ADJ_MODE", "qfq").strip().lower()
+# 股票基础信息来源：auto（优先tushare失败回退akshare）/ tushare / akshare
+# PowerShell: $env:STOCK_INFO_PROVIDER="auto"
+STOCK_INFO_PROVIDER = os.getenv("STOCK_INFO_PROVIDER", "auto").strip().lower()
 
 # 项目路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

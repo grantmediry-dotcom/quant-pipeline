@@ -10,6 +10,7 @@ from factor_framework.registry import register_factor
     display_name="5日反转",
     category="反转",
     direction=1,        # 计算时已取反，值越高 = 过去跌越多 → 未来涨
+    enabled=False,      # IR=0.32 未通过检验
     description="过去5个交易日收益率取反，捕捉短期均值回归效应",
     formula="-(close_t / close_{t-5} - 1)",
     parameters={"lookback": 5},

@@ -17,8 +17,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0607,
     "eval_ir": -0.4612
@@ -40,12 +40,12 @@
     "author": "quant_pipeline",
     "version": "1.0.0",
     "status": "research",
-    "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "enabled": false,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
-    "eval_ic_mean": 0.0336,
-    "eval_ir": 0.3292
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "turnover_20d": {
     "name": "turnover_20d",
@@ -67,8 +67,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.1027,
     "eval_ir": -0.6473
@@ -92,8 +92,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": 0.1046,
     "eval_ir": 0.6074
@@ -118,8 +118,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": 0.0936,
     "eval_ir": 0.6117
@@ -143,8 +143,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": 0.0341,
     "eval_ir": 0.496
@@ -170,8 +170,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": 0.0693,
     "eval_ir": 0.4461
@@ -195,8 +195,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0958,
     "eval_ir": -0.69
@@ -222,8 +222,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0701,
     "eval_ir": -0.4627
@@ -248,8 +248,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0598,
     "eval_ir": -0.4821
@@ -274,8 +274,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0921,
     "eval_ir": -0.55
@@ -300,10 +300,166 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-16 15:19:12",
-    "updated_at": "2026-02-16 15:19:12",
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
     "lineage": {},
     "eval_ic_mean": -0.0508,
     "eval_ir": -0.5544
+  },
+  "volume_std_5d": {
+    "name": "volume_std_5d",
+    "display_name": "短期量波动",
+    "category": "流动性",
+    "direction": -1,
+    "description": "过去5日成交量标准差，衡量交易活跃度的稳定性",
+    "formula": "-ts_stddev(volume, 5)",
+    "parameters": {
+      "window": 5,
+      "min_periods": 4
+    },
+    "data_sources": [
+      "vol"
+    ],
+    "lookback_days": 5,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": 0.0493,
+    "eval_ir": 0.4378
+  },
+  "open_vol_rank_div": {
+    "name": "open_vol_rank_div",
+    "display_name": "开盘量排名比",
+    "category": "资金流",
+    "direction": 1,
+    "description": "开盘价截面排名 / 成交量截面排名，捕捉'贵而安静'的筹码集中特征",
+    "formula": "rank(open) / rank(volume)",
+    "parameters": {},
+    "data_sources": [
+      "open",
+      "vol"
+    ],
+    "lookback_days": 0,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": false,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": null,
+    "eval_ir": null
+  },
+  "vwap_high_corr_10d": {
+    "name": "vwap_high_corr_10d",
+    "display_name": "VWAP高价比相关",
+    "category": "资金流",
+    "direction": 1,
+    "description": "VWAP/最高价比值与最高价的10日滚动相关系数，捕捉成交重心偏高的持续性",
+    "formula": "corr(vwap/high, high, 10)",
+    "parameters": {
+      "window": 10,
+      "min_periods": 7
+    },
+    "data_sources": [
+      "amount",
+      "vol",
+      "high"
+    ],
+    "lookback_days": 10,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": 0.0348,
+    "eval_ir": 0.463
+  },
+  "highlow_close_sum_5d": {
+    "name": "highlow_close_sum_5d",
+    "display_name": "多空力量比",
+    "category": "技术",
+    "direction": -1,
+    "description": "过去5日 (high+low)/close 累加值，衡量日内多空力量对比的持续性",
+    "formula": "ts_sum((high + low) / close, 5)",
+    "parameters": {
+      "window": 5,
+      "min_periods": 5
+    },
+    "data_sources": [
+      "high",
+      "low",
+      "close"
+    ],
+    "lookback_days": 5,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": false,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": null,
+    "eval_ir": null
+  },
+  "ret_turn_cov_7d": {
+    "name": "ret_turn_cov_7d",
+    "display_name": "收益换手联动",
+    "category": "资金流",
+    "direction": 1,
+    "description": "close*return 与 amount 的7日协方差，捕捉资金追涨杀跌行为",
+    "formula": "-cov(close * daily_return, amount, 7)",
+    "parameters": {
+      "window": 7,
+      "min_periods": 5
+    },
+    "data_sources": [
+      "close",
+      "pre_close",
+      "amount"
+    ],
+    "lookback_days": 7,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": 0.0631,
+    "eval_ir": 0.6664
+  },
+  "vwap_vol_cov_5d": {
+    "name": "vwap_vol_cov_5d",
+    "display_name": "均价量价联动",
+    "category": "资金流",
+    "direction": 1,
+    "description": "5日VWAP累计 × 3日成交量与VWAP协方差的乘积，衡量放量推价强度",
+    "formula": "-(ts_sum(vwap, 5) * cov(volume, vwap, 3))",
+    "parameters": {
+      "sum_window": 5,
+      "cov_window": 3,
+      "min_periods": 3
+    },
+    "data_sources": [
+      "amount",
+      "vol"
+    ],
+    "lookback_days": 5,
+    "author": "quant_pipeline",
+    "version": "1.0.0",
+    "status": "research",
+    "enabled": true,
+    "created_at": "2026-02-16 19:31:49",
+    "updated_at": "2026-02-16 19:31:49",
+    "lineage": {},
+    "eval_ic_mean": 0.0662,
+    "eval_ir": 0.7209
   }
 }

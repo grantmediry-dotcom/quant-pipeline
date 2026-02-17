@@ -10,6 +10,9 @@ PRICE_ADJ_MODE = os.getenv("PRICE_ADJ_MODE", "qfq").strip().lower()
 # 股票基础信息来源：auto（优先tushare失败回退akshare）/ tushare / akshare
 # PowerShell: $env:STOCK_INFO_PROVIDER="auto"
 STOCK_INFO_PROVIDER = os.getenv("STOCK_INFO_PROVIDER", "auto").strip().lower()
+# 日线行情来源：auto（优先tushare失败回退akshare）/ tushare / akshare
+# PowerShell: $env:DAILY_QUOTES_PROVIDER="auto"
+DAILY_QUOTES_PROVIDER = os.getenv("DAILY_QUOTES_PROVIDER", "auto").strip().lower()
 
 # 项目路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

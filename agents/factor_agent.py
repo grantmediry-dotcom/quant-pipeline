@@ -174,17 +174,36 @@ class FactorAgent(BaseAgent):
         registry_path = os.path.join(OUTPUT_DIR, "factor_registry.json")
         self.registry.save_to_disk(registry_path)
 
-        # V3: 发出因子检验结果信号
+        # V3: 因子相关性分析（自动化）
+        factor_ir = {row["因子名称"]: row["IR"] for _, row in result_df.iterrows()}
+        corr_result = self._correlation_analysis(enabled_names, factor_ir)
+
+        # V3: 发出因子检验结果信号（含相关性信息）
         test_results = {}
         for _, row in result_df.iterrows():
             test_results[row["因子名称"]] = {
                 "ic_mean": row["RankIC均值"],
                 "ir": row["IR"],
             }
-        self.emit("factors.tested", {"results": test_results})
+        self.emit("factors.tested", {
+            "results": test_results,
+            "table": result_df,
+            "redundant_pairs": corr_result.get("redundant_pairs", []),
+            "recommended_removals": corr_result.get("recommended_removals", []),
+        })
 
         print("[FactorAgent] 单因子检验完成")
         return result_df
+
+    def _correlation_analysis(self, factor_names: list, factor_ir: dict) -> dict:
+        """运行因子相关性分析"""
+        from factor_framework.correlation import run_correlation_analysis
+        return run_correlation_analysis(
+            factors_df=self.factors,
+            factor_names=factor_names,
+            factor_ir=factor_ir,
+            output_dir=OUTPUT_DIR,
+        )
 
     def _calc_rank_ic(self, factor_name: str) -> pd.Series:
         """计算某个因子的逐期 RankIC"""

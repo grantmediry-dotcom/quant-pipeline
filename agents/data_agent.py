@@ -1,76 +1,73 @@
+﻿"""
+Data Agent - data collection, cleaning, and caching.
 """
-Data Agent - 数据采集、清洗、本地缓存
-混合数据源：Tushare daily(按日期) + AKShare index
-
-V3 数据清洗链路：
-1. 获取股票基本信息（名称、上市日期）→ 识别 ST
-2. 拉取全市场行情
-3. 清洗：过滤ST、标记IPO首日、标记涨跌停、计算日收益率
-4. 输出带标记的干净数据
-"""
-import os
 import json
-import time
-import tushare as ts
-import akshare as ak
-import pandas as pd
-import numpy as np
-
+import os
 import sys
+import time
+
+import akshare as ak
+import numpy as np
+import pandas as pd
+import tushare as ts
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import (
-    TUSHARE_TOKEN,
-    PRICE_ADJ_MODE,
-    STOCK_INFO_PROVIDER,
-    DATA_DIR,
-    START_DATE,
-    END_DATE,
     API_DELAY,
+    DAILY_QUOTES_PROVIDER,
+    DATA_DIR,
+    END_DATE,
+    PRICE_ADJ_MODE,
+    START_DATE,
+    STOCK_INFO_PROVIDER,
+    TUSHARE_TOKEN,
 )
-from utils.helpers import save_parquet, load_parquet, ensure_dir
 from core.agent_base import BaseAgent
+from utils.helpers import ensure_dir, load_parquet, save_parquet
 
 
 class DataAgent(BaseAgent):
-    """
-    数据Agent（混合数据源 + 数据清洗）
-    - Tushare daily(trade_date): 按日期拉全市场行情（免费可用）
-    - Tushare stock_basic: 股票名称/上市日期（识别 ST）
-    - AKShare: 指数日线
-    """
+    """Data Agent: mixed providers + cleaning pipeline."""
 
     agent_name = "DataAgent"
 
     def __init__(self):
         super().__init__()
+
         self.price_adj_mode = PRICE_ADJ_MODE if PRICE_ADJ_MODE in {"qfq", "hfq", "none"} else "qfq"
         if self.price_adj_mode != PRICE_ADJ_MODE:
-            print(f"[DataAgent] 警告: 非法 PRICE_ADJ_MODE={PRICE_ADJ_MODE}，已回退为 qfq。")
+            print(f"[DataAgent] warning: invalid PRICE_ADJ_MODE={PRICE_ADJ_MODE}, fallback=qfq")
+
         self.stock_info_provider = (
             STOCK_INFO_PROVIDER if STOCK_INFO_PROVIDER in {"auto", "tushare", "akshare"} else "auto"
         )
         if self.stock_info_provider != STOCK_INFO_PROVIDER:
-            print(f"[DataAgent] 警告: 非法 STOCK_INFO_PROVIDER={STOCK_INFO_PROVIDER}，已回退为 auto。")
+            print(f"[DataAgent] warning: invalid STOCK_INFO_PROVIDER={STOCK_INFO_PROVIDER}, fallback=auto")
+
+        self.daily_quotes_provider = (
+            DAILY_QUOTES_PROVIDER if DAILY_QUOTES_PROVIDER in {"auto", "tushare", "akshare"} else "auto"
+        )
+        if self.daily_quotes_provider != DAILY_QUOTES_PROVIDER:
+            print(f"[DataAgent] warning: invalid DAILY_QUOTES_PROVIDER={DAILY_QUOTES_PROVIDER}, fallback=auto")
 
         self.pro = None
         if TUSHARE_TOKEN:
             ts.set_token(TUSHARE_TOKEN)
             self.pro = ts.pro_api()
         else:
-            print("[DataAgent] 警告: 未设置 TUSHARE_TOKEN，远程拉取已禁用，仅可使用本地缓存。")
+            print("[DataAgent] warning: missing TUSHARE_TOKEN, remote tushare calls disabled")
+
         ensure_dir(DATA_DIR)
         print(
-            f"[DataAgent] 初始化完成（PRICE_ADJ_MODE={self.price_adj_mode}, "
-            f"STOCK_INFO_PROVIDER={self.stock_info_provider}）"
+            "[DataAgent] init done "
+            f"(PRICE_ADJ_MODE={self.price_adj_mode}, "
+            f"STOCK_INFO_PROVIDER={self.stock_info_provider}, "
+            f"DAILY_QUOTES_PROVIDER={self.daily_quotes_provider})"
         )
 
     def _require_pro_api(self, action: str) -> None:
-        """Ensure Tushare API is available before remote fetch."""
         if self.pro is None:
-            raise RuntimeError(
-                f"[DataAgent] 执行 {action} 需要有效的 TUSHARE_TOKEN。"
-                "请先设置环境变量 TUSHARE_TOKEN，或提前准备本地缓存。"
-            )
+            raise RuntimeError(f"[DataAgent] {action} needs valid TUSHARE_TOKEN")
 
     @staticmethod
     def _load_cache_meta(meta_path: str) -> dict:
@@ -79,7 +76,7 @@ class DataAgent(BaseAgent):
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data if isinstance(data, dict) else {}
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
 
@@ -87,6 +84,13 @@ class DataAgent(BaseAgent):
     def _save_cache_meta(meta_path: str, data: dict) -> None:
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _to_ts_code(code: str) -> str:
+        code = str(code).zfill(6)
+        if code.startswith(("6", "9", "5")):
+            return f"{code}.SH"
+        return f"{code}.SZ"
 
     @staticmethod
     def _normalize_stock_info(df: pd.DataFrame) -> pd.DataFrame:
@@ -109,9 +113,9 @@ class DataAgent(BaseAgent):
         frames = []
         for status in ["L", "D", "P"]:
             part = self.pro.stock_basic(
-                exchange='',
+                exchange="",
                 list_status=status,
-                fields='ts_code,name,list_date,delist_date,list_status',
+                fields="ts_code,name,list_date,delist_date,list_status",
             )
             time.sleep(API_DELAY)
             if part is not None and not part.empty:
@@ -121,7 +125,6 @@ class DataAgent(BaseAgent):
             return None
 
         df = pd.concat(frames, ignore_index=True)
-        # 防御性去重：保留上市状态优先级 L > P > D 的记录
         status_priority = {"L": 0, "P": 1, "D": 2}
         df["_status_priority"] = df["list_status"].map(status_priority).fillna(9)
         df = (
@@ -134,7 +137,6 @@ class DataAgent(BaseAgent):
         return self._normalize_stock_info(df)
 
     def _fetch_stock_info_akshare(self) -> pd.DataFrame | None:
-        # akshare 仅提供存续股票基础信息，不包含退市/停牌全量信息
         raw = None
         try:
             raw = ak.stock_info_a_code_name()
@@ -147,7 +149,6 @@ class DataAgent(BaseAgent):
             except Exception:
                 return None
 
-        # 兼容不同字段名
         code_col = "code" if "code" in raw.columns else "代码"
         name_col = "name" if "name" in raw.columns else "名称"
         if code_col not in raw.columns or name_col not in raw.columns:
@@ -156,15 +157,8 @@ class DataAgent(BaseAgent):
         df = raw[[code_col, name_col]].copy()
         df.columns = ["code", "name"]
         df["code"] = df["code"].astype(str).str.zfill(6)
-        # 北交所代码通常以 4/8 开头，暂与当前逻辑保持一致直接排除
         df = df[~df["code"].str.startswith(("4", "8"))]
-
-        def to_ts_code(code: str) -> str:
-            if code.startswith(("6", "9", "5")):
-                return f"{code}.SH"
-            return f"{code}.SZ"
-
-        df["ts_code"] = df["code"].map(to_ts_code)
+        df["ts_code"] = df["code"].map(self._to_ts_code)
         df["is_st"] = df["name"].str.contains("ST", na=False).astype(int)
         df["list_date"] = ""
         df["delist_date"] = ""
@@ -172,109 +166,75 @@ class DataAgent(BaseAgent):
         df = df.drop(columns=["code"])
         return self._normalize_stock_info(df)
 
-    # ===== 股票基本信息 =====
-
     def get_stock_info(self) -> pd.DataFrame:
-        """获取全市场股票基本信息（含退市/暂停），用于 ST 过滤和上市日期判断"""
         cache_path = os.path.join(DATA_DIR, "stock_info.parquet")
         cached = load_parquet(cache_path)
         if cached is not None:
             required_cols = {"ts_code", "name", "list_date", "delist_date", "list_status", "is_st"}
             if required_cols.issubset(set(cached.columns)):
-                print(f"[DataAgent] 股票信息已缓存，共 {len(cached)} 只")
+                print(f"[DataAgent] stock_info cache hit symbols={len(cached)}")
                 return cached
-
+            cached = self._normalize_stock_info(cached)
             if self.pro is None:
-                # 无 token 时无法刷新远程缓存：补齐缺失列，保持兼容运行
-                cached = self._normalize_stock_info(cached)
-                print("[DataAgent] 警告: stock_info缓存字段不完整，且未设置 TUSHARE_TOKEN，使用兼容模式缓存。")
+                print("[DataAgent] warning: stock_info cache schema upgraded from local cache")
                 return cached
-
-            print("[DataAgent] 检测到旧版stock_info缓存，准备自动刷新...")
 
         order = ["tushare", "akshare"] if self.stock_info_provider == "auto" else [self.stock_info_provider]
         for provider in order:
             try:
-                print(f"[DataAgent] 正在获取股票基本信息（provider={provider}）...")
-                if provider == "tushare":
-                    df = self._fetch_stock_info_tushare()
-                else:
-                    df = self._fetch_stock_info_akshare()
-
+                print(f"[DataAgent] fetching stock_info provider={provider}")
+                df = self._fetch_stock_info_tushare() if provider == "tushare" else self._fetch_stock_info_akshare()
                 if df is not None and not df.empty:
                     save_parquet(df, cache_path)
-                    st_count = int(df["is_st"].sum()) if "is_st" in df.columns else 0
-                    print(
-                        f"[DataAgent] 股票信息获取完成(provider={provider}): "
-                        f"{len(df)} 只, 其中 ST {st_count} 只"
-                    )
+                    print(f"[DataAgent] stock_info done provider={provider}, symbols={len(df)}, ST={int(df['is_st'].sum())}")
                     return df
             except Exception as e:
-                print(f"[DataAgent] 股票信息获取失败(provider={provider}): {e}")
+                print(f"[DataAgent] stock_info failed provider={provider}: {e}")
 
         if cached is not None:
-            cached = self._normalize_stock_info(cached)
-            print("[DataAgent] 回退使用本地stock_info缓存（兼容模式）。")
+            print("[DataAgent] warning: fallback to local stock_info cache")
             return cached
 
-        # 兜底：无法获取时返回空 DataFrame
-        print("[DataAgent] 警告: 无法获取股票信息，跳过 ST 过滤")
-        return pd.DataFrame(
-            columns=["ts_code", "name", "list_date", "delist_date", "list_status", "is_st"]
-        )
-
-    # ===== 交易日历 =====
+        print("[DataAgent] warning: no stock_info available")
+        return pd.DataFrame(columns=["ts_code", "name", "list_date", "delist_date", "list_status", "is_st"])
 
     def _get_trade_dates_from_akshare(self) -> list[str]:
-        """使用AKShare指数日线近似交易日历。"""
         df = ak.stock_zh_index_daily(symbol="sh000852")
         if df is None or df.empty:
-            raise RuntimeError("[DataAgent] AKShare无法获取交易日历")
-        dates = pd.to_datetime(df["date"]).dt.strftime("%Y%m%d")
+            raise RuntimeError("[DataAgent] AKShare unable to fetch trade calendar")
+        dates = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y%m%d")
         dates = dates[(dates >= START_DATE) & (dates <= END_DATE)]
-        return sorted(dates.unique().tolist())
+        return sorted(dates.dropna().unique().tolist())
 
     def _get_trade_dates_from_daily(self) -> list[str]:
-        """通过 daily 接口获取交易日列表"""
         cache_path = os.path.join(DATA_DIR, "trade_dates.parquet")
         cached = load_parquet(cache_path)
-        if cached is not None:
-            return cached["trade_date"].tolist()
+        if cached is not None and "trade_date" in cached.columns:
+            return cached["trade_date"].astype(str).tolist()
 
         dates = []
         if self.pro is not None:
-            print("[DataAgent] 正在获取交易日历（provider=tushare）...")
+            print("[DataAgent] fetching trade calendar provider=tushare")
             try:
                 df = self.pro.daily(ts_code="000001.SZ", start_date=START_DATE, end_date=END_DATE)
                 time.sleep(API_DELAY)
                 if df is not None and not df.empty:
-                    dates = sorted(df["trade_date"].unique().tolist())
+                    dates = sorted(df["trade_date"].astype(str).unique().tolist())
             except Exception as e:
-                print(f"[DataAgent] 交易日历获取失败(provider=tushare): {e}")
+                print(f"[DataAgent] trade calendar failed provider=tushare: {e}")
 
         if not dates:
-            print("[DataAgent] 正在获取交易日历（provider=akshare）...")
+            print("[DataAgent] fetching trade calendar provider=akshare")
             dates = self._get_trade_dates_from_akshare()
 
-        df_dates = pd.DataFrame({"trade_date": dates})
-        save_parquet(df_dates, cache_path)
-        print(f"[DataAgent] 交易日历获取完成，共 {len(dates)} 个交易日")
+        save_parquet(pd.DataFrame({"trade_date": dates}), cache_path)
+        print(f"[DataAgent] trade calendar done days={len(dates)}")
         return dates
 
-    # ===== 行情数据 =====
-
-    def _fetch_raw_quotes(self) -> pd.DataFrame:
-        """拉取原始行情（无清洗）"""
-        cache_path = os.path.join(DATA_DIR, "daily_quotes_raw.parquet")
-        cached = load_parquet(cache_path)
-        if cached is not None:
-            print(f"[DataAgent] 原始行情已缓存，共 {len(cached)} 行")
-            return cached
-
-        self._require_pro_api("_fetch_raw_quotes")
+    def _fetch_raw_quotes_tushare(self) -> pd.DataFrame:
+        self._require_pro_api("_fetch_raw_quotes_tushare")
         trade_dates = self._get_trade_dates_from_daily()
-        print(f"[DataAgent] 按日期拉取全市场行情，共 {len(trade_dates)} 个交易日")
-        print(f"  预计耗时: {len(trade_dates) * API_DELAY / 60:.1f} 分钟")
+        print(f"[DataAgent] quotes fetch provider=tushare, trade_dates={len(trade_dates)}")
 
         all_data = []
         failed_dates = []
@@ -282,28 +242,21 @@ class DataAgent(BaseAgent):
             try:
                 df = self.pro.daily(trade_date=date)
                 time.sleep(API_DELAY)
-
                 if df is not None and not df.empty:
                     df = df[~df["ts_code"].str.endswith(".BJ")]
-                    all_data.append(df[["ts_code", "trade_date",
-                                        "open", "high", "low", "close",
-                                        "vol", "amount", "pre_close"]])
-
+                    all_data.append(df[["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount", "pre_close"]])
                 if (i + 1) % 100 == 0:
-                    print(f"  已处理 {i + 1}/{len(trade_dates)} 个交易日")
-
+                    print(f"  processed {i + 1}/{len(trade_dates)}")
             except Exception as e:
-                print(f"  {date} 拉取失败: {e}")
                 failed_dates.append(date)
+                print(f"  fetch failed date={date}: {e}")
                 time.sleep(2)
-                continue
 
-        # 重试失败的日期（最多3轮）
         for retry in range(3):
             if not failed_dates:
                 break
-            print(f"  重试第 {retry + 1} 轮，共 {len(failed_dates)} 个失败日期")
             still_failed = []
+            print(f"  retry {retry + 1}, pending={len(failed_dates)}")
             for date in failed_dates:
                 try:
                     time.sleep(2)
@@ -311,41 +264,160 @@ class DataAgent(BaseAgent):
                     time.sleep(API_DELAY)
                     if df is not None and not df.empty:
                         df = df[~df["ts_code"].str.endswith(".BJ")]
-                        all_data.append(df[["ts_code", "trade_date",
-                                            "open", "high", "low", "close",
-                                            "vol", "amount", "pre_close"]])
-                        print(f"    {date} 重试成功")
+                        all_data.append(df[["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount", "pre_close"]])
                     else:
                         still_failed.append(date)
                 except Exception:
                     still_failed.append(date)
             failed_dates = still_failed
 
+        if not all_data:
+            raise RuntimeError("[DataAgent] tushare quotes returned no data")
         if failed_dates:
-            print(f"  警告: {len(failed_dates)} 个日期最终失败: {failed_dates}")
+            print(f"[DataAgent] warning: unresolved trade dates={len(failed_dates)}")
 
-        print("[DataAgent] 合并行情数据...")
         result = pd.concat(all_data, ignore_index=True)
         result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
-
         for col in ["open", "high", "low", "close", "vol", "amount", "pre_close"]:
             result[col] = pd.to_numeric(result[col], errors="coerce")
-
-        save_parquet(result, cache_path)
-        print(f"[DataAgent] 原始行情拉取完成，共 {len(result)} 行")
         return result
 
+    def _fetch_raw_quotes_akshare(self) -> pd.DataFrame:
+        print("[DataAgent] quotes fetch provider=akshare (symbol loop)")
+
+        stock_info = self.get_stock_info()
+        if stock_info is None or stock_info.empty or "ts_code" not in stock_info.columns:
+            raise RuntimeError("[DataAgent] akshare quotes require stock_info")
+
+        stock_info = stock_info.copy()
+        stock_info["code"] = stock_info["ts_code"].astype(str).str[:6]
+        stock_info = stock_info[stock_info["code"].str.match(r"^\d{6}$", na=False)]
+        stock_info = stock_info[~stock_info["code"].str.startswith(("4", "8"))]
+        stock_info = stock_info.drop_duplicates(subset=["code"])
+
+        code_to_ts = dict(zip(stock_info["code"], stock_info["ts_code"]))
+        codes = stock_info["code"].tolist()
+
+        def pick_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
+            for c in candidates:
+                if c in df.columns:
+                    return c
+            return None
+
+        all_data = []
+        failed = []
+        for i, code in enumerate(codes):
+            try:
+                hist = ak.stock_zh_a_hist(
+                    symbol=code,
+                    period="daily",
+                    start_date=START_DATE,
+                    end_date=END_DATE,
+                    adjust="",
+                )
+                if hist is None or hist.empty:
+                    continue
+
+                date_col = pick_col(hist, ["日期", "date", "Date"])
+                open_col = pick_col(hist, ["开盘", "open", "Open"])
+                high_col = pick_col(hist, ["最高", "high", "High"])
+                low_col = pick_col(hist, ["最低", "low", "Low"])
+                close_col = pick_col(hist, ["收盘", "close", "Close"])
+                vol_col = pick_col(hist, ["成交量", "vol", "volume", "Volume"])
+                amount_col = pick_col(hist, ["成交额", "amount", "Amount"])
+
+                if not all([date_col, open_col, high_col, low_col, close_col]):
+                    failed.append(code)
+                    continue
+
+                frame = pd.DataFrame(
+                    {
+                        "trade_date": pd.to_datetime(hist[date_col], errors="coerce").dt.strftime("%Y%m%d"),
+                        "open": pd.to_numeric(hist[open_col], errors="coerce"),
+                        "high": pd.to_numeric(hist[high_col], errors="coerce"),
+                        "low": pd.to_numeric(hist[low_col], errors="coerce"),
+                        "close": pd.to_numeric(hist[close_col], errors="coerce"),
+                        "vol": pd.to_numeric(hist[vol_col], errors="coerce") if vol_col else np.nan,
+                        "amount": pd.to_numeric(hist[amount_col], errors="coerce") if amount_col else np.nan,
+                    }
+                )
+                frame["ts_code"] = code_to_ts.get(code, self._to_ts_code(code))
+                frame = frame.dropna(subset=["trade_date"]).sort_values("trade_date").reset_index(drop=True)
+                frame["pre_close"] = frame["close"].shift(1)
+                frame = frame[["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount", "pre_close"]]
+                if not frame.empty:
+                    all_data.append(frame)
+
+                if (i + 1) % 200 == 0:
+                    print(f"  processed {i + 1}/{len(codes)} symbols")
+                time.sleep(0.02)
+            except Exception:
+                failed.append(code)
+
+        if not all_data:
+            raise RuntimeError("[DataAgent] akshare quotes returned no data")
+        if failed:
+            print(f"[DataAgent] warning: failed symbols={len(set(failed))}")
+
+        result = pd.concat(all_data, ignore_index=True)
+        result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+        for col in ["open", "high", "low", "close", "vol", "amount", "pre_close"]:
+            result[col] = pd.to_numeric(result[col], errors="coerce")
+        return result
+
+    def _fetch_raw_quotes(self) -> pd.DataFrame:
+        cache_path = os.path.join(DATA_DIR, "daily_quotes_raw.parquet")
+        meta_path = os.path.join(DATA_DIR, "daily_quotes_raw.meta.json")
+        cached = load_parquet(cache_path)
+        meta = self._load_cache_meta(meta_path)
+
+        cached_provider = str(meta.get("provider", "")).lower()
+        if cached is not None:
+            cache_match = (
+                cached_provider == self.daily_quotes_provider
+                or (self.daily_quotes_provider == "auto" and cached_provider in {"tushare", "akshare"})
+            )
+            if cache_match:
+                print(f"[DataAgent] raw quotes cache hit rows={len(cached)} provider={cached_provider or 'unknown'}")
+                return cached
+            print(
+                f"[DataAgent] raw quotes cache provider mismatch "
+                f"(cached={cached_provider or 'unknown'}, current={self.daily_quotes_provider}), rebuilding"
+            )
+
+        order = ["tushare", "akshare"] if self.daily_quotes_provider == "auto" else [self.daily_quotes_provider]
+        for provider in order:
+            try:
+                result = self._fetch_raw_quotes_tushare() if provider == "tushare" else self._fetch_raw_quotes_akshare()
+                save_parquet(result, cache_path)
+                self._save_cache_meta(
+                    meta_path,
+                    {
+                        "provider": provider,
+                        "start_date": START_DATE,
+                        "end_date": END_DATE,
+                    },
+                )
+                print(f"[DataAgent] raw quotes fetched rows={len(result)} provider={provider}")
+                return result
+            except Exception as e:
+                print(f"[DataAgent] raw quotes failed provider={provider}: {e}")
+
+        if cached is not None:
+            print("[DataAgent] warning: fallback to existing raw quotes cache")
+            return cached
+        raise RuntimeError("[DataAgent] unable to fetch raw quotes from all providers")
+
     def _get_adj_factors(self) -> pd.DataFrame:
-        """获取复权因子（按配置日期范围缓存）。"""
         cache_path = os.path.join(DATA_DIR, "adj_factors.parquet")
         cached = load_parquet(cache_path)
         if cached is not None:
-            print(f"[DataAgent] 复权因子已缓存，共 {len(cached)} 行")
+            print(f"[DataAgent] adj factors cache hit rows={len(cached)}")
             return cached
 
         self._require_pro_api("_get_adj_factors")
         trade_dates = self._get_trade_dates_from_daily()
-        print(f"[DataAgent] 按日期拉取复权因子，共 {len(trade_dates)} 个交易日")
+        print(f"[DataAgent] fetching adj factors trade_dates={len(trade_dates)}")
 
         all_data = []
         failed_dates = []
@@ -353,25 +425,21 @@ class DataAgent(BaseAgent):
             try:
                 df = self.pro.adj_factor(trade_date=date, fields="ts_code,trade_date,adj_factor")
                 time.sleep(API_DELAY)
-
                 if df is not None and not df.empty:
                     df = df[~df["ts_code"].str.endswith(".BJ")]
                     all_data.append(df)
-
                 if (i + 1) % 100 == 0:
-                    print(f"  已处理 {i + 1}/{len(trade_dates)} 个交易日")
-
+                    print(f"  processed {i + 1}/{len(trade_dates)}")
             except Exception as e:
-                print(f"  {date} 拉取失败: {e}")
                 failed_dates.append(date)
+                print(f"  fetch failed date={date}: {e}")
                 time.sleep(2)
-                continue
 
         for retry in range(2):
             if not failed_dates:
                 break
-            print(f"  复权因子重试第 {retry + 1} 轮，共 {len(failed_dates)} 个失败日期")
             still_failed = []
+            print(f"  retry {retry + 1}, pending={len(failed_dates)}")
             for date in failed_dates:
                 try:
                     time.sleep(2)
@@ -380,7 +448,6 @@ class DataAgent(BaseAgent):
                     if df is not None and not df.empty:
                         df = df[~df["ts_code"].str.endswith(".BJ")]
                         all_data.append(df)
-                        print(f"    {date} 重试成功")
                     else:
                         still_failed.append(date)
                 except Exception:
@@ -388,23 +455,20 @@ class DataAgent(BaseAgent):
             failed_dates = still_failed
 
         if not all_data:
-            raise RuntimeError("[DataAgent] 无法获取任何复权因子数据")
-
+            raise RuntimeError("[DataAgent] adj factors returned no data")
         if failed_dates:
-            print(f"  警告: {len(failed_dates)} 个日期复权因子最终失败: {failed_dates}")
+            print(f"[DataAgent] warning: unresolved adj-factor dates={len(failed_dates)}")
 
         result = pd.concat(all_data, ignore_index=True)
         result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
         result["adj_factor"] = pd.to_numeric(result["adj_factor"], errors="coerce")
-
         save_parquet(result, cache_path)
-        print(f"[DataAgent] 复权因子拉取完成，共 {len(result)} 行")
+        print(f"[DataAgent] adj factors fetched rows={len(result)}")
         return result
 
     def _apply_price_adjustment(self, df: pd.DataFrame) -> pd.DataFrame:
-        """对价格字段应用前/后复权。"""
         if self.price_adj_mode == "none":
-            print("[DataAgent] PRICE_ADJ_MODE=none，跳过价格复权")
+            print("[DataAgent] PRICE_ADJ_MODE=none, skip price adjustment")
             return df
 
         adj_df = self._get_adj_factors()
@@ -414,194 +478,167 @@ class DataAgent(BaseAgent):
 
         if self.price_adj_mode == "qfq":
             anchor = work.groupby("ts_code")["adj_factor"].transform("last")
-        else:  # hfq
+        else:
             anchor = work.groupby("ts_code")["adj_factor"].transform("first")
 
         scale = work["adj_factor"] / anchor
         scale = scale.replace([np.inf, -np.inf], np.nan).fillna(1.0)
 
-        price_cols = ["open", "high", "low", "close", "pre_close"]
-        for col in price_cols:
+        for col in ["open", "high", "low", "close", "pre_close"]:
             work[col] = pd.to_numeric(work[col], errors="coerce") * scale
 
         work = work.drop(columns=["adj_factor"])
-        print(f"[DataAgent] 已应用价格复权: {self.price_adj_mode}")
+        print(f"[DataAgent] applied price adjustment mode={self.price_adj_mode}")
         return work
 
     def get_daily_quotes(self) -> pd.DataFrame:
-        """
-        获取清洗后的日线行情
-
-        清洗步骤：
-        1. 过滤 ST 股票
-        2. 标记 IPO 首日（上市后前5个交易日）
-        3. 标记涨跌停
-        4. 应用价格复权（qfq/hfq/none）
-        """
         cache_path = os.path.join(DATA_DIR, "daily_quotes.parquet")
         meta_path = os.path.join(DATA_DIR, "daily_quotes.meta.json")
         cached = load_parquet(cache_path)
+
         if cached is not None:
             meta = self._load_cache_meta(meta_path)
             cached_mode = str(meta.get("price_adj_mode", "")).lower()
-            if cached_mode == self.price_adj_mode:
-                print(f"[DataAgent] 日线行情已缓存，共 {len(cached)} 行（PRICE_ADJ_MODE={cached_mode}）")
+            cached_provider = str(meta.get("daily_quotes_provider", "")).lower()
+            provider_match = (
+                cached_provider == self.daily_quotes_provider
+                or (self.daily_quotes_provider == "auto" and cached_provider in {"tushare", "akshare"})
+            )
+            if cached_mode == self.price_adj_mode and provider_match:
+                print(
+                    f"[DataAgent] daily quotes cache hit rows={len(cached)} "
+                    f"mode={cached_mode}, provider={cached_provider or 'unknown'}"
+                )
                 return cached
 
-            if self.pro is None:
-                print(
-                    "[DataAgent] 警告: 日线缓存复权模式不匹配，且未设置 TUSHARE_TOKEN。"
-                    "继续使用现有缓存。"
-                )
-                print(f"[DataAgent] 日线行情已缓存，共 {len(cached)} 行（legacy）")
+            if self.pro is None and self.price_adj_mode != "none":
+                print("[DataAgent] warning: cannot rebuild adjusted prices without TUSHARE_TOKEN, reuse cache")
                 return cached
 
             print(
-                f"[DataAgent] 日线缓存复权模式不匹配（cached={cached_mode or 'unknown'}, "
-                f"current={self.price_adj_mode}），将重新构建。"
+                f"[DataAgent] daily quotes cache mismatch "
+                f"(mode {cached_mode}->{self.price_adj_mode}, "
+                f"provider {cached_provider or 'unknown'}->{self.daily_quotes_provider}), rebuilding"
             )
 
-        # 拉取原始数据
         raw = self._fetch_raw_quotes()
         stock_info = self.get_stock_info()
 
-        print("[DataAgent] 开始数据清洗...")
+        print("[DataAgent] cleaning daily quotes...")
         df = raw.copy()
         n_before = len(df)
 
-        # 1. 过滤 ST 股票
         if len(stock_info) > 0 and "is_st" in stock_info.columns:
             st_codes = stock_info[stock_info["is_st"] == 1]["ts_code"].tolist()
             df = df[~df["ts_code"].isin(st_codes)]
-            n_after_st = len(df)
-            print(f"  过滤 ST: {n_before - n_after_st} 行 ({len(st_codes)} 只 ST 股)")
-        else:
-            n_after_st = n_before
+            print(f"  ST filtered rows={n_before - len(df)} symbols={len(st_codes)}")
 
-        # 2. 标记 IPO 期（上市后前5个交易日，不参与因子计算）
         if len(stock_info) > 0 and "list_date" in stock_info.columns:
-            df = df.merge(
-                stock_info[["ts_code", "list_date"]],
-                on="ts_code", how="left"
-            )
+            df = df.merge(stock_info[["ts_code", "list_date"]], on="ts_code", how="left")
             df["list_date"] = df["list_date"].fillna("").astype(str)
 
-            # 仅对样本期内新上市股票标记 IPO 前5个交易日，避免样本起点误标老股票
             has_list_date = df["list_date"].str.len().eq(8)
             listed_in_sample = has_list_date & (df["list_date"] >= START_DATE)
             after_list = has_list_date & (df["trade_date"] >= df["list_date"])
 
             df["_ipo_rank"] = np.nan
-            df.loc[after_list, "_ipo_rank"] = (
-                df.loc[after_list].groupby("ts_code").cumcount() + 1
-            )
-            df["is_ipo_period"] = (
-                listed_in_sample & after_list & (df["_ipo_rank"] <= 5)
-            ).astype(int)
+            df.loc[after_list, "_ipo_rank"] = df.loc[after_list].groupby("ts_code").cumcount() + 1
+            df["is_ipo_period"] = (listed_in_sample & after_list & (df["_ipo_rank"] <= 5)).astype(int)
 
             df = df.drop(columns=["list_date", "_ipo_rank"])
-            ipo_rows = df["is_ipo_period"].sum()
-            print(f"  标记 IPO 期: {ipo_rows} 行（样本内新股上市后前5个交易日）")
+            print(f"  IPO marked rows={int(df['is_ipo_period'].sum())}")
         else:
             df["is_ipo_period"] = 0
 
-        # 3. 标记涨跌停（用 pre_close 判断，区分不同板块涨跌停幅度）
         if "pre_close" in df.columns and df["pre_close"].notna().sum() > 0:
             df["pct_chg"] = (df["close"] / df["pre_close"] - 1) * 100
 
-            # 确定每只股票的涨跌停阈值
-            # 科创板(688开头): ±20%  创业板(300开头,2020-08-24起): ±20%  其他: ±10%
-            is_star = df["ts_code"].str.startswith("688")  # 科创板
-            is_gem = df["ts_code"].str.startswith("300")   # 创业板
-            gem_reform = df["trade_date"] >= "20200824"     # 创业板注册制日期
+            is_star = df["ts_code"].str.startswith("688")
+            is_gem = df["ts_code"].str.startswith("300")
+            gem_reform = df["trade_date"] >= "20200824"
 
-            limit_pct = pd.Series(9.5, index=df.index)     # 默认主板 10%（留精度余量）
-            limit_pct[is_star] = 19.5                       # 科创板 20%
-            limit_pct[is_gem & gem_reform] = 19.5           # 创业板 20%（注册制后）
+            limit_pct = pd.Series(9.5, index=df.index)
+            limit_pct[is_star] = 19.5
+            limit_pct[is_gem & gem_reform] = 19.5
 
             df["is_limit_up"] = (df["pct_chg"] >= limit_pct).astype(int)
             df["is_limit_down"] = (df["pct_chg"] <= -limit_pct).astype(int)
-            limit_up = df["is_limit_up"].sum()
-            limit_down = df["is_limit_down"].sum()
-            print(f"  标记涨停: {limit_up} 行, 跌停: {limit_down} 行（含科创板/创业板20%）")
+            print(
+                f"  limit marks: up={int(df['is_limit_up'].sum())}, "
+                f"down={int(df['is_limit_down'].sum())}"
+            )
         else:
             df["pct_chg"] = 0
             df["is_limit_up"] = 0
             df["is_limit_down"] = 0
 
-        # 4. 价格复权（在涨跌停标记之后，避免影响真实交易规则识别）
         df = self._apply_price_adjustment(df)
 
-        n_final = len(df)
-        print(f"  清洗完成: {n_before} → {n_final} 行 (移除 {n_before - n_final} 行)")
-
+        print(f"  cleaning done rows: {n_before} -> {len(df)}")
         save_parquet(df, cache_path)
+
+        raw_meta = self._load_cache_meta(os.path.join(DATA_DIR, "daily_quotes_raw.meta.json"))
+        raw_provider = str(raw_meta.get("provider", "")).lower()
         self._save_cache_meta(
             meta_path,
             {
                 "price_adj_mode": self.price_adj_mode,
+                "daily_quotes_provider": raw_provider or self.daily_quotes_provider,
                 "start_date": START_DATE,
                 "end_date": END_DATE,
             },
         )
         return df
 
-    # ===== 基准指数 =====
-
     def get_benchmark(self) -> pd.DataFrame:
-        """获取中证1000指数日线（AKShare）"""
         cache_path = os.path.join(DATA_DIR, "benchmark.parquet")
         cached = load_parquet(cache_path)
         if cached is not None:
-            print(f"[DataAgent] 基准指数已缓存，共 {len(cached)} 行")
+            print(f"[DataAgent] benchmark cache hit rows={len(cached)}")
             return cached
 
-        print("[DataAgent] 正在拉取中证1000指数行情（AKShare）...")
+        print("[DataAgent] fetching benchmark from AKShare sh000852")
         df = ak.stock_zh_index_daily(symbol="sh000852")
+        if df is None or df.empty:
+            raise RuntimeError("[DataAgent] unable to fetch benchmark")
 
-        if df is not None and not df.empty:
-            df["trade_date"] = pd.to_datetime(df["date"]).dt.strftime("%Y%m%d")
-            df = df.rename(columns={"close": "bench_close"})
-            df = df[["trade_date", "bench_close"]]
-            df = df[(df["trade_date"] >= START_DATE) & (df["trade_date"] <= END_DATE)]
-            df = df.sort_values("trade_date").reset_index(drop=True)
-            df["bench_close"] = pd.to_numeric(df["bench_close"], errors="coerce")
-            save_parquet(df, cache_path)
-            print(f"[DataAgent] 基准指数拉取完成，共 {len(df)} 行")
-            return df
-        else:
-            raise RuntimeError("[DataAgent] 无法获取基准指数数据")
-
-    # ===== 主流程 =====
+        df["trade_date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y%m%d")
+        df = df.rename(columns={"close": "bench_close"})
+        df = df[["trade_date", "bench_close"]]
+        df = df[(df["trade_date"] >= START_DATE) & (df["trade_date"] <= END_DATE)]
+        df = df.sort_values("trade_date").reset_index(drop=True)
+        df["bench_close"] = pd.to_numeric(df["bench_close"], errors="coerce")
+        save_parquet(df, cache_path)
+        print(f"[DataAgent] benchmark fetched rows={len(df)}")
+        return df
 
     def update_all(self) -> dict:
-        """一键拉取并清洗所有数据"""
         print("=" * 50)
-        print("[DataAgent] 开始全量数据拉取")
+        print("[DataAgent] full update start")
         print("=" * 50)
 
         quotes = self.get_daily_quotes()
         benchmark = self.get_benchmark()
 
         summary = {
-            "股票数量": quotes["ts_code"].nunique(),
-            "行情数据行数": len(quotes),
-            "基准数据行数": len(benchmark),
+            "股票数量": int(quotes["ts_code"].nunique()),
+            "行情数据行数": int(len(quotes)),
+            "基准数据行数": int(len(benchmark)),
             "日期范围": f"{START_DATE} ~ {END_DATE}",
         }
 
-        # 数据质量报告
         stock_info = load_parquet(os.path.join(DATA_DIR, "stock_info.parquet"))
         if stock_info is not None and "is_st" in stock_info.columns:
             summary["ST过滤"] = f"已完成（ST样本 {int(stock_info['is_st'].sum())} 只）"
         else:
             summary["ST过滤"] = "未提供（缺少stock_info缓存）"
-        if "is_ipo_period" in quotes.columns:
-            summary["IPO期标记"] = f"{quotes['is_ipo_period'].sum()} 行"
-        if "is_limit_up" in quotes.columns:
-            summary["涨停标记"] = f"{quotes['is_limit_up'].sum()} 行"
 
-        print("\n[DataAgent] 数据拉取完成:")
+        if "is_ipo_period" in quotes.columns:
+            summary["IPO期标记"] = f"{int(quotes['is_ipo_period'].sum())} 行"
+        if "is_limit_up" in quotes.columns:
+            summary["涨停标记"] = f"{int(quotes['is_limit_up'].sum())} 行"
+
+        print("\n[DataAgent] data update done:")
         for k, v in summary.items():
             print(f"  {k}: {v}")
 

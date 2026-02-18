@@ -126,18 +126,25 @@ class FactorAgent(BaseAgent):
 
         return result
 
-    def single_factor_test(self) -> pd.DataFrame:
-        """对每个启用因子进行 RankIC 检验，并回写评价指标到注册表"""
+    def single_factor_test(self, date_range: tuple[str, str] = None) -> pd.DataFrame:
+        """
+        对每个启用因子进行 RankIC 检验，并回写评价指标到注册表
+
+        参数：
+            date_range: 可选 (start_date, end_date)，仅在此窗口内计算IC/IR
+                        用于 walk-forward 验证的训练窗口限制
+        """
         if self.factors is None:
             self.compute_factors()
 
         enabled_names = self.registry.list_factors(enabled_only=True)
 
-        print("[FactorAgent] 正在进行单因子检验...")
+        window_label = f" (窗口: {date_range[0]}~{date_range[1]})" if date_range else ""
+        print(f"[FactorAgent] 正在进行单因子检验{window_label}...")
         results = []
 
         for fname in enabled_names:
-            ic_series = self._calc_rank_ic(fname)
+            ic_series = self._calc_rank_ic(fname, date_range=date_range)
             if len(ic_series) == 0:
                 continue
 
@@ -205,9 +212,16 @@ class FactorAgent(BaseAgent):
             output_dir=OUTPUT_DIR,
         )
 
-    def _calc_rank_ic(self, factor_name: str) -> pd.Series:
-        """计算某个因子的逐期 RankIC"""
+    def _calc_rank_ic(self, factor_name: str, date_range: tuple[str, str] = None) -> pd.Series:
+        """
+        计算某个因子的逐期 RankIC
+
+        参数：
+            date_range: 可选 (start_date, end_date)，仅在此窗口内计算
+        """
         df = self.factors.dropna(subset=[factor_name, "fwd_ret_1m"])
+        if date_range:
+            df = df[(df["trade_date"] >= date_range[0]) & (df["trade_date"] <= date_range[1])]
 
         df = df.copy()
         df["month"] = df["trade_date"].str[:6]

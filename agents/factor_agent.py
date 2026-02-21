@@ -61,16 +61,22 @@ class FactorAgent(BaseAgent):
             cached = load_parquet(cache_path)
 
             if cached is not None and fname in cached.columns:
-                # 从缓存加载，按 index 对齐
-                df = df.merge(
-                    cached[["ts_code", "trade_date", fname]],
-                    on=["ts_code", "trade_date"], how="left", suffixes=("", "_cached")
-                )
-                if f"{fname}_cached" in df.columns:
-                    df[fname] = df[f"{fname}_cached"]
-                    df = df.drop(columns=[f"{fname}_cached"])
-                print(f"  {fname}: 已从缓存加载")
-                continue
+                # 校验缓存一致性：行数偏差超过1%则重新计算
+                expected_rows = len(df)
+                cached_rows = len(cached)
+                if abs(cached_rows - expected_rows) / max(expected_rows, 1) > 0.01:
+                    print(f"  {fname}: 缓存行数不匹配 (cached={cached_rows}, expected={expected_rows})，重新计算")
+                else:
+                    # 从缓存加载，按 index 对齐
+                    df = df.merge(
+                        cached[["ts_code", "trade_date", fname]],
+                        on=["ts_code", "trade_date"], how="left", suffixes=("", "_cached")
+                    )
+                    if f"{fname}_cached" in df.columns:
+                        df[fname] = df[f"{fname}_cached"]
+                        df = df.drop(columns=[f"{fname}_cached"])
+                    print(f"  {fname}: 已从缓存加载")
+                    continue
 
             instance = self.registry.create_instance(fname)
 
@@ -248,6 +254,19 @@ class FactorAgent(BaseAgent):
             self.compute_factors()
 
         snapshot = self.factors[self.factors["trade_date"] == date].copy()
+
+        # 排除停牌股（停牌日价格不反映真实信息，不应参与选股）
+        if "vol" in self.df.columns and "amount" in self.df.columns:
+            day_data = self.df[self.df["trade_date"] == date]
+            suspended_codes = day_data[
+                (day_data["vol"].fillna(0) == 0) & (day_data["amount"].fillna(0) == 0)
+            ]["ts_code"]
+            n_before = len(snapshot)
+            snapshot = snapshot[~snapshot["ts_code"].isin(suspended_codes)]
+            n_excluded = n_before - len(snapshot)
+            if n_excluded > 0:
+                print(f"  [FactorAgent] {date}: 排除停牌股 {n_excluded} 只")
+
         enabled_names = self.registry.list_factors(enabled_only=True)
 
         # 只保留有数据的因子，且截面 NaN 比例 < 50%

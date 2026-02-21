@@ -27,6 +27,11 @@ class BacktestAgent(BaseAgent):
             self.limit_down = daily_quotes[["ts_code", "trade_date", "is_limit_down"]].copy()
         else:
             self.limit_down = None
+        # 保留停牌标记用于卖出限制
+        if "is_suspended" in daily_quotes.columns:
+            self.suspended = daily_quotes[["ts_code", "trade_date", "is_suspended"]].copy()
+        else:
+            self.suspended = None
         print("[BacktestAgent] 初始化完成")
 
     def run(self, holdings_by_date: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -147,7 +152,15 @@ class BacktestAgent(BaseAgent):
             ld_today[ld_today["is_limit_down"] == 1]["ts_code"].values
         )
 
-        # 跌停且需要卖出的股票
+        # 停牌也不可卖
+        if self.suspended is not None:
+            susp_today = self.suspended[self.suspended["trade_date"] == trade_date]
+            susp_codes = set(
+                susp_today[susp_today["is_suspended"] == 1]["ts_code"].values
+            )
+            ld_codes |= susp_codes
+
+        # 跌停/停牌且需要卖出的股票
         forced_hold = sell_codes & ld_codes
         if not forced_hold:
             return new_holdings
@@ -168,7 +181,7 @@ class BacktestAgent(BaseAgent):
         })
         result = pd.concat([adjusted, forced_df], ignore_index=True)
 
-        print(f"  [跌停限制] {trade_date}: {len(forced_hold)} 只跌停无法卖出，"
+        print(f"  [卖出限制] {trade_date}: {len(forced_hold)} 只跌停/停牌无法卖出，"
               f"占权重 {forced_weight:.1%}")
 
         return result

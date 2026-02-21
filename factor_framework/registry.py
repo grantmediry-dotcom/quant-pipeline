@@ -54,6 +54,12 @@ class FactorRegistry:
             raise KeyError(f"因子 {name} 未注册")
         self._metadata[name] = metadata
 
+    def reset_eval(self) -> None:
+        """重置所有因子的评估指标（walk-forward 窗口间调用）"""
+        for meta in self._metadata.values():
+            meta.eval_ic_mean = None
+            meta.eval_ir = None
+
     def list_factors(
         self,
         category: Optional[str] = None,

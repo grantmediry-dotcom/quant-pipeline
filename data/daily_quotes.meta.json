@@ -1,5 +1,6 @@
 {
-  "price_adj_mode": "none",
+  "price_adj_mode": "qfq",
+  "daily_quotes_provider": "tushare",
   "start_date": "20200101",
   "end_date": "20241231"
 }

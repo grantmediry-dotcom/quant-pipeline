@@ -533,6 +533,18 @@ class DataAgent(BaseAgent):
             df = df[~df["ts_code"].isin(st_codes)]
             print(f"  ST filtered rows={n_before - len(df)} symbols={len(st_codes)}")
 
+        # 退市股过滤：在退市日之后的行情数据应剔除（消除幸存者偏差）
+        if len(stock_info) > 0 and "delist_date" in stock_info.columns:
+            df = df.merge(stock_info[["ts_code", "delist_date"]], on="ts_code", how="left")
+            df["delist_date"] = df["delist_date"].fillna("").astype(str)
+            has_delist = df["delist_date"].str.len().eq(8)
+            n_before_delist = len(df)
+            df = df[~has_delist | (df["trade_date"] < df["delist_date"])]
+            df = df.drop(columns=["delist_date"])
+            removed = n_before_delist - len(df)
+            if removed > 0:
+                print(f"  退市股过滤 rows={removed}")
+
         if len(stock_info) > 0 and "list_date" in stock_info.columns:
             df = df.merge(stock_info[["ts_code", "list_date"]], on="ts_code", how="left")
             df["list_date"] = df["list_date"].fillna("").astype(str)
@@ -571,6 +583,14 @@ class DataAgent(BaseAgent):
             df["pct_chg"] = 0
             df["is_limit_up"] = 0
             df["is_limit_down"] = 0
+
+        # 停牌标记：成交量和成交额同时为0视为停牌
+        df["is_suspended"] = (
+            (df["vol"].fillna(0) == 0) & (df["amount"].fillna(0) == 0)
+        ).astype(int)
+        n_suspended = int(df["is_suspended"].sum())
+        if n_suspended > 0:
+            print(f"  停牌标记: {n_suspended} 行")
 
         df = self._apply_price_adjustment(df)
 

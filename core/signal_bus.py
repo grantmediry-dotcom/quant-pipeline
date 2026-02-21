@@ -14,6 +14,10 @@ from datetime import datetime
 from typing import Callable
 from collections import defaultdict, Counter
 
+from utils.log import get_logger
+
+logger = get_logger("core.signal_bus")
+
 
 @dataclass
 class Signal:
@@ -51,13 +55,13 @@ class SignalBus:
 
     def publish(self, signal: Signal) -> None:
         self._history.append(signal)
-        print(f"  [SignalBus] {signal.sender} -> {signal.name}")
+        logger.info(f"{signal.sender} -> {signal.name}")
 
         for callback in self._subscribers.get(signal.name, []):
             try:
                 callback(signal)
             except Exception as e:
-                print(f"  [SignalBus] 处理信号异常: {signal.name} -> {e}")
+                logger.warning(f"信号处理异常: {signal.name} -> {e}", exc_info=True)
 
     def get_history(self) -> list:
         return list(self._history)

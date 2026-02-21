@@ -52,3 +52,28 @@ def date_range_monthly(start: str, end: str) -> list[str]:
     """生成月末交易日列表（YYYYMMDD格式）"""
     dates = pd.date_range(start, end, freq="ME")
     return [d.strftime("%Y%m%d") for d in dates]
+
+
+def get_month_end_dates(trade_dates) -> list[str]:
+    """从交易日序列中提取每月最后一个交易日"""
+    if isinstance(trade_dates, pd.DataFrame):
+        trade_dates = trade_dates["trade_date"]
+    s = pd.Series(trade_dates).astype(str)
+    months = s.str[:6]
+    return s.groupby(months).max().sort_values().tolist()
+
+
+def calc_avg_amount(daily_quotes: pd.DataFrame, window: int = 20) -> pd.Series:
+    """计算滚动平均成交额（用于流动性过滤）"""
+    return daily_quotes.groupby("ts_code")["amount"].transform(
+        lambda x: x.rolling(window, min_periods=10).mean()
+    )
+
+
+def get_illiquid_codes(daily_quotes: pd.DataFrame, date: str,
+                       threshold: float = 10000) -> list[str]:
+    """获取指定日期流动性不足的股票代码"""
+    day_data = daily_quotes[daily_quotes["trade_date"] == date]
+    if "_avg_amount_20d" not in day_data.columns:
+        return []
+    return day_data[day_data["_avg_amount_20d"] < threshold]["ts_code"].tolist()

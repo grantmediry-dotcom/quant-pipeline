@@ -16,6 +16,9 @@ from config.settings import OUTPUT_DIR
 from core.agent_base import BaseAgent
 from core.signal_bus import Signal
 from utils.helpers import ensure_dir
+from utils.log import get_logger
+
+logger = get_logger("agents.monitor_agent")
 
 
 class MonitorAgent(BaseAgent):
@@ -31,13 +34,13 @@ class MonitorAgent(BaseAgent):
     def __init__(self):
         super().__init__()
         ensure_dir(OUTPUT_DIR)
-        print("[MonitorAgent] init done")
+        logger.info("初始化完成")
 
     def _on_factors_tested(self, signal: Signal):
         payload = signal.payload or {}
         factor_test = self._factor_test_from_signal_payload(payload)
         if factor_test is None or factor_test.empty:
-            print("[MonitorAgent] factors.tested payload empty, skip feedback")
+            logger.info("factors.tested payload 为空，跳过反馈")
             return
         self.analyze_factors(factor_test)
 
@@ -84,7 +87,7 @@ class MonitorAgent(BaseAgent):
 
     def analyze_factors(self, factor_test: pd.DataFrame):
         """Analyze factor health and emit feedback signals for alpha."""
-        print("[MonitorAgent] analyzing factor health...")
+        logger.info("分析因子健康状态...")
 
         factor_test = factor_test.copy()
         name_col, ic_col, ir_col = self._resolve_factor_columns(factor_test)
@@ -99,10 +102,10 @@ class MonitorAgent(BaseAgent):
 
             if abs(ir) < self.IR_THRESHOLD:
                 degraded.append(fname)
-                print(f"  [Monitor] degraded: {fname} |IR|={abs(ir):.4f} < {self.IR_THRESHOLD}")
+                logger.info(f"  退化: {fname} |IR|={abs(ir):.4f} < {self.IR_THRESHOLD}")
             else:
                 healthy[fname] = abs(ic_mean)
-                print(f"  [Monitor] healthy: {fname} |IR|={abs(ir):.4f}, |IC|={abs(ic_mean):.4f}")
+                logger.info(f"  健康: {fname} |IR|={abs(ir):.4f}, |IC|={abs(ic_mean):.4f}")
 
         if degraded:
             self.emit(
@@ -128,16 +131,16 @@ class MonitorAgent(BaseAgent):
                     "excluded": degraded,
                 },
             )
-            print(f"  [Monitor] ic-weighted update: {weights}")
+            logger.info(f"IC 加权更新: {weights}")
         else:
-            print("  [Monitor] warning: no healthy factors, keep equal-weight fallback")
+            logger.warning("无健康因子，保持等权回退")
 
     def generate_report(self, metrics: dict, factor_test: pd.DataFrame, nav_df: pd.DataFrame):
-        print("[MonitorAgent] generating report...")
+        logger.info("生成报告...")
         self._write_text_report(metrics, factor_test)
         self._plot_nav_curve(nav_df)
         self._plot_excess_curve(nav_df)
-        print(f"[MonitorAgent] report saved to {OUTPUT_DIR}")
+        logger.info(f"报告已保存至 {OUTPUT_DIR}")
 
     def _write_text_report(self, metrics: dict, factor_test: pd.DataFrame):
         lines = []
@@ -160,7 +163,7 @@ class MonitorAgent(BaseAgent):
         lines.append("")
         lines.append("=" * 60)
         report_text = "\n".join(lines)
-        print("\n" + report_text)
+        logger.info("\n" + report_text)
         with open(os.path.join(OUTPUT_DIR, "backtest_report.txt"), "w", encoding="utf-8") as f:
             f.write(report_text)
 
@@ -180,7 +183,7 @@ class MonitorAgent(BaseAgent):
         fig.tight_layout()
         fig.savefig(os.path.join(OUTPUT_DIR, "nav_curve.png"), dpi=150)
         plt.close(fig)
-        print("  saved: nav_curve.png")
+        logger.info("saved: nav_curve.png")
 
     def _plot_excess_curve(self, nav_df: pd.DataFrame):
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -198,4 +201,4 @@ class MonitorAgent(BaseAgent):
         fig.tight_layout()
         fig.savefig(os.path.join(OUTPUT_DIR, "excess_nav_curve.png"), dpi=150)
         plt.close(fig)
-        print("  saved: excess_nav_curve.png")
+        logger.info("saved: excess_nav_curve.png")

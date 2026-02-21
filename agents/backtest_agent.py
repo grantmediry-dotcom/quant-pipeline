@@ -11,6 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import DATA_DIR, OUTPUT_DIR, TRADE_COST_BUY, TRADE_COST_SELL
 from utils.helpers import ensure_dir
 from core.agent_base import BaseAgent
+from utils.log import get_logger
+
+logger = get_logger("agents.backtest_agent")
 
 
 class BacktestAgent(BaseAgent):
@@ -32,7 +35,7 @@ class BacktestAgent(BaseAgent):
             self.suspended = daily_quotes[["ts_code", "trade_date", "is_suspended"]].copy()
         else:
             self.suspended = None
-        print("[BacktestAgent] 初始化完成")
+        logger.info("初始化完成")
 
     def run(self, holdings_by_date: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
@@ -45,7 +48,7 @@ class BacktestAgent(BaseAgent):
         关键：调仓日 T 的信号基于 T 日收盘价计算，新持仓从 T+1 日开始生效。
         T 日的收益仍然使用旧持仓计算，避免前视偏差。
         """
-        print(f"[BacktestAgent] 开始回测，共 {len(holdings_by_date)} 个调仓期...")
+        logger.info(f"开始回测，共 {len(holdings_by_date)} 个调仓期...")
 
         all_trade_dates = sorted(self.quotes["trade_date"].unique())
 
@@ -103,7 +106,7 @@ class BacktestAgent(BaseAgent):
 
             nav_records.append({"trade_date": td, "nav": current_nav})
 
-        print(f"[BacktestAgent] 累计交易成本: {total_cost:.2%}")
+        logger.info(f"累计交易成本: {total_cost:.2%}")
 
         nav_df = pd.DataFrame(nav_records)
 
@@ -122,7 +125,7 @@ class BacktestAgent(BaseAgent):
         nav_df.to_csv(os.path.join(OUTPUT_DIR, "backtest_nav.csv"),
                        index=False, encoding="utf-8-sig")
 
-        print("[BacktestAgent] 回测完成")
+        logger.info("回测完成")
         return nav_df
 
     def _apply_limit_down_constraint(
@@ -181,8 +184,8 @@ class BacktestAgent(BaseAgent):
         })
         result = pd.concat([adjusted, forced_df], ignore_index=True)
 
-        print(f"  [卖出限制] {trade_date}: {len(forced_hold)} 只跌停/停牌无法卖出，"
-              f"占权重 {forced_weight:.1%}")
+        logger.info(f"卖出限制 {trade_date}: {len(forced_hold)} 只跌停/停牌无法卖出，"
+                     f"占权重 {forced_weight:.1%}")
 
         return result
 

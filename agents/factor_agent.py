@@ -16,8 +16,11 @@ from datetime import datetime
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import DATA_DIR, OUTPUT_DIR
-from utils.helpers import save_parquet, load_parquet, ensure_dir
+from utils.helpers import save_parquet, load_parquet, ensure_dir, get_month_end_dates
 from core.agent_base import BaseAgent
+from utils.log import get_logger
+
+logger = get_logger("agents.factor_agent")
 
 
 class FactorAgent(BaseAgent):
@@ -36,7 +39,7 @@ class FactorAgent(BaseAgent):
         self.registry = FactorRegistry()
 
         enabled = self.registry.list_factors(enabled_only=True)
-        print(f"[FactorAgent] 初始化完成，已注册 {len(enabled)} 个启用因子")
+        logger.info(f"初始化完成，已注册 {len(enabled)} 个启用因子")
 
     def compute_factors(self) -> pd.DataFrame:
         """
@@ -45,7 +48,7 @@ class FactorAgent(BaseAgent):
         每个因子独立缓存为 data/factor_{name}.parquet，
         新增因子只需计算新的，不影响已有缓存。
         """
-        print("[FactorAgent] 正在计算因子...")
+        logger.info("正在计算因子...")
         df = self.df.copy()
 
         # 日收益率（非因子，但多个因子的计算基础）
@@ -65,7 +68,7 @@ class FactorAgent(BaseAgent):
                 expected_rows = len(df)
                 cached_rows = len(cached)
                 if abs(cached_rows - expected_rows) / max(expected_rows, 1) > 0.01:
-                    print(f"  {fname}: 缓存行数不匹配 (cached={cached_rows}, expected={expected_rows})，重新计算")
+                    logger.info(f"  {fname}: 缓存行数不匹配 (cached={cached_rows}, expected={expected_rows})，重新计算")
                 else:
                     # 从缓存加载，按 index 对齐
                     df = df.merge(
@@ -75,7 +78,7 @@ class FactorAgent(BaseAgent):
                     if f"{fname}_cached" in df.columns:
                         df[fname] = df[f"{fname}_cached"]
                         df = df.drop(columns=[f"{fname}_cached"])
-                    print(f"  {fname}: 已从缓存加载")
+                    logger.info(f"  {fname}: 已从缓存加载")
                     continue
 
             instance = self.registry.create_instance(fname)
@@ -87,9 +90,9 @@ class FactorAgent(BaseAgent):
             # 质量检验（Ray 的 validate 模式）
             quality = instance.validate(df[fname])
             if quality["inf_count"] > 0:
-                print(f"  警告: {fname} 包含 {quality['inf_count']} 个 Inf 值")
+                logger.warning(f"  {fname} 包含 {quality['inf_count']} 个 Inf 值")
             if quality["nan_ratio"] > 0.5:
-                print(f"  警告: {fname} NaN 比例 {quality['nan_ratio']:.1%}，超过阈值")
+                logger.warning(f"  {fname} NaN 比例 {quality['nan_ratio']:.1%}，超过阈值")
 
             # 清洗（Inf→NaN, winsorize）
             df[fname] = instance.clean(df[fname])
@@ -98,8 +101,8 @@ class FactorAgent(BaseAgent):
             factor_df = df[["ts_code", "trade_date", fname]].copy()
             save_parquet(factor_df, cache_path)
 
-            print(f"  {instance.metadata.display_name}({fname}): "
-                  f"耗时 {elapsed:.1f}s, NaN={quality['nan_ratio']:.1%}")
+            logger.info(f"  {instance.metadata.display_name}({fname}): "
+                        f"耗时 {elapsed:.1f}s, NaN={quality['nan_ratio']:.1%}")
 
         # 未来收益率（用于因子检验，非因子本身）
         df["fwd_ret_1m"] = df.groupby("ts_code")["close"].transform(
@@ -110,7 +113,7 @@ class FactorAgent(BaseAgent):
         if "is_ipo_period" in df.columns:
             n_before_ipo = len(df)
             df = df[df["is_ipo_period"] == 0]
-            print(f"  排除 IPO 期: {n_before_ipo - len(df)} 行")
+            logger.info(f"  排除 IPO 期: {n_before_ipo - len(df)} 行")
 
         # 构建结果
         base_cols = ["ts_code", "trade_date", "close", "ret"]
@@ -123,7 +126,7 @@ class FactorAgent(BaseAgent):
         result = df.loc[factor_valid & df["fwd_ret_1m"].notna(), factor_cols]
 
         self.factors = result
-        print(f"[FactorAgent] 因子计算完成，共 {len(result)} 行")
+        logger.info(f"因子计算完成，共 {len(result)} 行")
 
         # 保存注册表元信息
         registry_path = os.path.join(OUTPUT_DIR, "factor_registry.json")
@@ -146,7 +149,7 @@ class FactorAgent(BaseAgent):
         enabled_names = self.registry.list_factors(enabled_only=True)
 
         window_label = f" (窗口: {date_range[0]}~{date_range[1]})" if date_range else ""
-        print(f"[FactorAgent] 正在进行单因子检验{window_label}...")
+        logger.info(f"正在进行单因子检验{window_label}...")
         results = []
 
         for fname in enabled_names:
@@ -176,7 +179,7 @@ class FactorAgent(BaseAgent):
             except KeyError:
                 pass
 
-            print(f"  {fname}: IC={ic_mean:.4f}, IR={ir:.4f}, IC>0占比={ic_positive_pct:.2%}")
+            logger.info(f"  {fname}: IC={ic_mean:.4f}, IR={ir:.4f}, IC>0占比={ic_positive_pct:.2%}")
 
         result_df = pd.DataFrame(results)
         ensure_dir(OUTPUT_DIR)
@@ -205,7 +208,7 @@ class FactorAgent(BaseAgent):
             "recommended_removals": corr_result.get("recommended_removals", []),
         })
 
-        print("[FactorAgent] 单因子检验完成")
+        logger.info("单因子检验完成")
         return result_df
 
     def _correlation_analysis(self, factor_names: list, factor_ir: dict) -> dict:
@@ -230,8 +233,7 @@ class FactorAgent(BaseAgent):
             df = df[(df["trade_date"] >= date_range[0]) & (df["trade_date"] <= date_range[1])]
 
         df = df.copy()
-        df["month"] = df["trade_date"].str[:6]
-        month_ends = df.groupby("month")["trade_date"].max().values
+        month_ends = get_month_end_dates(df["trade_date"])
         df_monthly = df[df["trade_date"].isin(month_ends)]
 
         ic_list = []
@@ -265,7 +267,7 @@ class FactorAgent(BaseAgent):
             snapshot = snapshot[~snapshot["ts_code"].isin(suspended_codes)]
             n_excluded = n_before - len(snapshot)
             if n_excluded > 0:
-                print(f"  [FactorAgent] {date}: 排除停牌股 {n_excluded} 只")
+                logger.info(f"{date}: 排除停牌股 {n_excluded} 只")
 
         enabled_names = self.registry.list_factors(enabled_only=True)
 

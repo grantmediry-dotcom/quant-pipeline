@@ -29,8 +29,12 @@ from agents.alpha_agent import AlphaAgent
 from agents.portfolio_agent import PortfolioAgent
 from agents.backtest_agent import BacktestAgent
 from agents.monitor_agent import MonitorAgent
+from factor_framework.registry import FactorRegistry
 from config.settings import OUTPUT_DIR, START_DATE, END_DATE
-from utils.helpers import ensure_dir
+from utils.helpers import ensure_dir, get_month_end_dates, calc_avg_amount, get_illiquid_codes
+from utils.log import get_logger
+
+logger = get_logger("core.walk_forward")
 
 
 def generate_windows(
@@ -92,35 +96,32 @@ class WalkForwardValidator:
     def __init__(self, windows: list[dict] = None):
         self.bus = SignalBus()
         self.windows = windows or generate_windows()
+        self.registry = FactorRegistry()
         ensure_dir(OUTPUT_DIR)
 
     def run(self):
-        print("=" * 60)
-        print("  Walk-Forward 样本外验证")
-        print(f"  共 {len(self.windows)} 个滚动窗口")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("  Walk-Forward 样本外验证")
+        logger.info(f"  共 {len(self.windows)} 个滚动窗口")
+        logger.info("=" * 60)
 
         # ===== Phase 1: 一次性数据准备 =====
-        print("\n--- 数据准备 ---")
+        logger.info("--- 数据准备 ---")
         data_agent = DataAgent()
         data_agent.update_all()
         daily_quotes = data_agent.get_daily_quotes()
         benchmark = data_agent.get_benchmark()
 
         # ===== Phase 2: 一次性因子计算（全量数据） =====
-        print("\n--- 因子计算（全量） ---")
+        logger.info("--- 因子计算（全量） ---")
         factor_agent = FactorAgent(daily_quotes)
         factor_agent.compute_factors()
 
         # 预计算流动性过滤
-        daily_quotes["_avg_amount_20d"] = daily_quotes.groupby("ts_code")["amount"].transform(
-            lambda x: x.rolling(20, min_periods=10).mean()
-        )
+        daily_quotes["_avg_amount_20d"] = calc_avg_amount(daily_quotes)
 
         # 获取所有月末日期
-        factors_df = factor_agent.factors.copy()
-        factors_df["month"] = factors_df["trade_date"].str[:6]
-        all_month_ends = sorted(factors_df.groupby("month")["trade_date"].max().values)
+        all_month_ends = get_month_end_dates(factor_agent.factors["trade_date"].unique())
 
         # ===== Phase 3: 逐窗口执行 =====
         window_results = []
@@ -130,11 +131,11 @@ class WalkForwardValidator:
             train_range = window["train"]
             test_range = window["test"]
 
-            print(f"\n{'='*60}")
-            print(f"  Window {i+1}/{len(self.windows)}")
-            print(f"  Train: {train_range[0]} ~ {train_range[1]}")
-            print(f"  Test:  {test_range[0]} ~ {test_range[1]}")
-            print(f"{'='*60}")
+            logger.info("=" * 60)
+            logger.info(f"  Window {i+1}/{len(self.windows)}")
+            logger.info(f"  Train: {train_range[0]} ~ {train_range[1]}")
+            logger.info(f"  Test:  {test_range[0]} ~ {test_range[1]}")
+            logger.info("=" * 60)
 
             result = self._run_single_window(
                 factor_agent=factor_agent,
@@ -151,19 +152,19 @@ class WalkForwardValidator:
                 window_summaries.append(result["summary"])
 
         if not window_results:
-            print("\n[WalkForward] 没有有效的测试窗口结果")
+            logger.warning("没有有效的测试窗口结果")
             return
 
         # ===== Phase 4: 拼接 + 报告 =====
-        print(f"\n{'='*60}")
-        print("  拼接样本外结果")
-        print(f"{'='*60}")
+        logger.info("=" * 60)
+        logger.info("  拼接样本外结果")
+        logger.info("=" * 60)
 
         oos_nav = self._stitch_nav(window_results, benchmark)
         oos_metrics = BacktestAgent.calc_metrics(oos_nav)
 
         # 全量回测对比（样本内）
-        print("\n--- 全量回测（样本内对比） ---")
+        logger.info("--- 全量回测（样本内对比） ---")
         is_nav = self._run_full_period(
             factor_agent, daily_quotes, benchmark, all_month_ends
         )
@@ -172,10 +173,10 @@ class WalkForwardValidator:
         # 输出
         self._save_results(oos_nav, oos_metrics, is_metrics, window_summaries)
 
-        print(f"\n{'='*60}")
-        print("  Walk-Forward 验证完成！")
-        print(f"  输出目录: {OUTPUT_DIR}")
-        print(f"{'='*60}")
+        logger.info("=" * 60)
+        logger.info("  Walk-Forward 验证完成！")
+        logger.info(f"  输出目录: {OUTPUT_DIR}")
+        logger.info("=" * 60)
 
     def _run_single_window(
         self,
@@ -189,14 +190,15 @@ class WalkForwardValidator:
     ) -> dict | None:
         """执行单个 walk-forward 窗口"""
 
-        # 1. 重置信号总线
+        # 1. 重置信号总线 + 因子评估指标
         self.bus.clear()
+        self.registry.reset_eval()
 
         # 2. 训练期：因子检验（窗口内IC/IR）
         factor_test = factor_agent.single_factor_test(date_range=train_range)
 
         if factor_test.empty:
-            print(f"  [Window {window_idx+1}] 训练期无有效因子检验结果，跳过")
+            logger.warning(f"[Window {window_idx+1}] 训练期无有效因子检验结果，跳过")
             return None
 
         # 3. Monitor 分析训练期因子健康状态
@@ -223,7 +225,7 @@ class WalkForwardValidator:
         ]
 
         if not test_month_ends:
-            print(f"  [Window {window_idx+1}] 测试期无调仓日，跳过")
+            logger.warning(f"[Window {window_idx+1}] 测试期无调仓日，跳过")
             return None
 
         holdings_by_date = {}
@@ -235,10 +237,7 @@ class WalkForwardValidator:
             alpha_scores = alpha_agent.composite_score(scores)
 
             # 流动性过滤
-            illiquid = daily_quotes[
-                (daily_quotes["trade_date"] == date) &
-                (daily_quotes["_avg_amount_20d"] < 10000)
-            ]["ts_code"].tolist()
+            illiquid = get_illiquid_codes(daily_quotes, date)
             if illiquid:
                 alpha_scores = alpha_scores[~alpha_scores["ts_code"].isin(illiquid)]
 
@@ -255,10 +254,10 @@ class WalkForwardValidator:
             holdings_by_date[date] = portfolio
 
         if not holdings_by_date:
-            print(f"  [Window {window_idx+1}] 测试期无有效持仓，跳过")
+            logger.warning(f"[Window {window_idx+1}] 测试期无有效持仓，跳过")
             return None
 
-        print(f"  [Window {window_idx+1}] 测试期生成 {len(holdings_by_date)} 期持仓")
+        logger.info(f"[Window {window_idx+1}] 测试期生成 {len(holdings_by_date)} 期持仓")
 
         # 6. 测试期回测
         backtest_agent = BacktestAgent(daily_quotes, benchmark)
@@ -291,7 +290,7 @@ class WalkForwardValidator:
             **{f"test_{k}": v for k, v in test_metrics.items()},
         }
 
-        print(f"  [Window {window_idx+1}] 测试期绩效: {test_metrics.get('年化收益率', 'N/A')}")
+        logger.info(f"[Window {window_idx+1}] 测试期绩效: {test_metrics.get('年化收益率', 'N/A')}")
 
         return {
             "nav_df": nav_df,
@@ -302,6 +301,7 @@ class WalkForwardValidator:
     def _run_full_period(self, factor_agent, daily_quotes, benchmark, all_month_ends):
         """全量回测（用于样本内对比）"""
         self.bus.clear()
+        self.registry.reset_eval()
 
         factor_test = factor_agent.single_factor_test()
         monitor = MonitorAgent()
@@ -322,10 +322,7 @@ class WalkForwardValidator:
                 continue
             alpha_scores = alpha_agent.composite_score(scores)
 
-            illiquid = daily_quotes[
-                (daily_quotes["trade_date"] == date) &
-                (daily_quotes["_avg_amount_20d"] < 10000)
-            ]["ts_code"].tolist()
+            illiquid = get_illiquid_codes(daily_quotes, date)
             if illiquid:
                 alpha_scores = alpha_scores[~alpha_scores["ts_code"].isin(illiquid)]
 
@@ -456,7 +453,7 @@ class WalkForwardValidator:
         lines.append("=" * 60)
 
         report = "\n".join(lines)
-        print("\n" + report)
+        logger.info("\n" + report)
 
         with open(os.path.join(OUTPUT_DIR, "walkforward_report.txt"), "w", encoding="utf-8") as f:
             f.write(report)
@@ -480,7 +477,7 @@ class WalkForwardValidator:
         fig.tight_layout()
         fig.savefig(os.path.join(OUTPUT_DIR, "walkforward_nav_curve.png"), dpi=150)
         plt.close(fig)
-        print("  样本外净值曲线已保存: walkforward_nav_curve.png")
+        logger.info("样本外净值曲线已保存: walkforward_nav_curve.png")
 
     def _plot_comparison(self, oos_nav: pd.DataFrame):
         """超额净值曲线"""
@@ -505,4 +502,4 @@ class WalkForwardValidator:
         fig.tight_layout()
         fig.savefig(os.path.join(OUTPUT_DIR, "walkforward_excess_nav.png"), dpi=150)
         plt.close(fig)
-        print("  样本外超额净值曲线已保存: walkforward_excess_nav.png")
+        logger.info("样本外超额净值曲线已保存: walkforward_excess_nav.png")

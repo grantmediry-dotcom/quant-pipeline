@@ -9,6 +9,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import TOP_N
 from core.agent_base import BaseAgent
+from utils.log import get_logger
+
+logger = get_logger("agents.portfolio_agent")
 
 
 class PortfolioAgent(BaseAgent):
@@ -19,7 +22,7 @@ class PortfolioAgent(BaseAgent):
     def __init__(self, top_n: int = TOP_N):
         super().__init__()
         self.top_n = top_n
-        print(f"[PortfolioAgent] 初始化完成，每期选 {top_n} 只")
+        logger.info(f"初始化完成，每期选 {top_n} 只")
 
     def select(self, alpha_scores: pd.DataFrame) -> pd.DataFrame:
         """

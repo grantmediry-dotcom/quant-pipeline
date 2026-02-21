@@ -1,4 +1,4 @@
-﻿"""
+"""
 Data Agent - data collection, cleaning, and caching.
 """
 import json
@@ -24,6 +24,9 @@ from config.settings import (
 )
 from core.agent_base import BaseAgent
 from utils.helpers import ensure_dir, load_parquet, save_parquet
+from utils.log import get_logger
+
+logger = get_logger("agents.data_agent")
 
 
 class DataAgent(BaseAgent):
@@ -36,30 +39,30 @@ class DataAgent(BaseAgent):
 
         self.price_adj_mode = PRICE_ADJ_MODE if PRICE_ADJ_MODE in {"qfq", "hfq", "none"} else "qfq"
         if self.price_adj_mode != PRICE_ADJ_MODE:
-            print(f"[DataAgent] warning: invalid PRICE_ADJ_MODE={PRICE_ADJ_MODE}, fallback=qfq")
+            logger.warning(f"invalid PRICE_ADJ_MODE={PRICE_ADJ_MODE}, fallback=qfq")
 
         self.stock_info_provider = (
             STOCK_INFO_PROVIDER if STOCK_INFO_PROVIDER in {"auto", "tushare", "akshare"} else "auto"
         )
         if self.stock_info_provider != STOCK_INFO_PROVIDER:
-            print(f"[DataAgent] warning: invalid STOCK_INFO_PROVIDER={STOCK_INFO_PROVIDER}, fallback=auto")
+            logger.warning(f"invalid STOCK_INFO_PROVIDER={STOCK_INFO_PROVIDER}, fallback=auto")
 
         self.daily_quotes_provider = (
             DAILY_QUOTES_PROVIDER if DAILY_QUOTES_PROVIDER in {"auto", "tushare", "akshare"} else "auto"
         )
         if self.daily_quotes_provider != DAILY_QUOTES_PROVIDER:
-            print(f"[DataAgent] warning: invalid DAILY_QUOTES_PROVIDER={DAILY_QUOTES_PROVIDER}, fallback=auto")
+            logger.warning(f"invalid DAILY_QUOTES_PROVIDER={DAILY_QUOTES_PROVIDER}, fallback=auto")
 
         self.pro = None
         if TUSHARE_TOKEN:
             ts.set_token(TUSHARE_TOKEN)
             self.pro = ts.pro_api()
         else:
-            print("[DataAgent] warning: missing TUSHARE_TOKEN, remote tushare calls disabled")
+            logger.warning("missing TUSHARE_TOKEN, remote tushare calls disabled")
 
         ensure_dir(DATA_DIR)
-        print(
-            "[DataAgent] init done "
+        logger.info(
+            f"init done "
             f"(PRICE_ADJ_MODE={self.price_adj_mode}, "
             f"STOCK_INFO_PROVIDER={self.stock_info_provider}, "
             f"DAILY_QUOTES_PROVIDER={self.daily_quotes_provider})"
@@ -172,30 +175,30 @@ class DataAgent(BaseAgent):
         if cached is not None:
             required_cols = {"ts_code", "name", "list_date", "delist_date", "list_status", "is_st"}
             if required_cols.issubset(set(cached.columns)):
-                print(f"[DataAgent] stock_info cache hit symbols={len(cached)}")
+                logger.info(f"stock_info cache hit symbols={len(cached)}")
                 return cached
             cached = self._normalize_stock_info(cached)
             if self.pro is None:
-                print("[DataAgent] warning: stock_info cache schema upgraded from local cache")
+                logger.warning("stock_info cache schema upgraded from local cache")
                 return cached
 
         order = ["tushare", "akshare"] if self.stock_info_provider == "auto" else [self.stock_info_provider]
         for provider in order:
             try:
-                print(f"[DataAgent] fetching stock_info provider={provider}")
+                logger.info(f"fetching stock_info provider={provider}")
                 df = self._fetch_stock_info_tushare() if provider == "tushare" else self._fetch_stock_info_akshare()
                 if df is not None and not df.empty:
                     save_parquet(df, cache_path)
-                    print(f"[DataAgent] stock_info done provider={provider}, symbols={len(df)}, ST={int(df['is_st'].sum())}")
+                    logger.info(f"stock_info done provider={provider}, symbols={len(df)}, ST={int(df['is_st'].sum())}")
                     return df
             except Exception as e:
-                print(f"[DataAgent] stock_info failed provider={provider}: {e}")
+                logger.warning(f"stock_info failed provider={provider}: {e}")
 
         if cached is not None:
-            print("[DataAgent] warning: fallback to local stock_info cache")
+            logger.warning("fallback to local stock_info cache")
             return cached
 
-        print("[DataAgent] warning: no stock_info available")
+        logger.warning("no stock_info available")
         return pd.DataFrame(columns=["ts_code", "name", "list_date", "delist_date", "list_status", "is_st"])
 
     def _get_trade_dates_from_akshare(self) -> list[str]:
@@ -214,27 +217,27 @@ class DataAgent(BaseAgent):
 
         dates = []
         if self.pro is not None:
-            print("[DataAgent] fetching trade calendar provider=tushare")
+            logger.info("fetching trade calendar provider=tushare")
             try:
                 df = self.pro.daily(ts_code="000001.SZ", start_date=START_DATE, end_date=END_DATE)
                 time.sleep(API_DELAY)
                 if df is not None and not df.empty:
                     dates = sorted(df["trade_date"].astype(str).unique().tolist())
             except Exception as e:
-                print(f"[DataAgent] trade calendar failed provider=tushare: {e}")
+                logger.warning(f"trade calendar failed provider=tushare: {e}")
 
         if not dates:
-            print("[DataAgent] fetching trade calendar provider=akshare")
+            logger.info("fetching trade calendar provider=akshare")
             dates = self._get_trade_dates_from_akshare()
 
         save_parquet(pd.DataFrame({"trade_date": dates}), cache_path)
-        print(f"[DataAgent] trade calendar done days={len(dates)}")
+        logger.info(f"trade calendar done days={len(dates)}")
         return dates
 
     def _fetch_raw_quotes_tushare(self) -> pd.DataFrame:
         self._require_pro_api("_fetch_raw_quotes_tushare")
         trade_dates = self._get_trade_dates_from_daily()
-        print(f"[DataAgent] quotes fetch provider=tushare, trade_dates={len(trade_dates)}")
+        logger.info(f"quotes fetch provider=tushare, trade_dates={len(trade_dates)}")
 
         all_data = []
         failed_dates = []
@@ -246,17 +249,17 @@ class DataAgent(BaseAgent):
                     df = df[~df["ts_code"].str.endswith(".BJ")]
                     all_data.append(df[["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount", "pre_close"]])
                 if (i + 1) % 100 == 0:
-                    print(f"  processed {i + 1}/{len(trade_dates)}")
+                    logger.info(f"  processed {i + 1}/{len(trade_dates)}")
             except Exception as e:
                 failed_dates.append(date)
-                print(f"  fetch failed date={date}: {e}")
+                logger.warning(f"  fetch failed date={date}: {e}")
                 time.sleep(2)
 
         for retry in range(3):
             if not failed_dates:
                 break
             still_failed = []
-            print(f"  retry {retry + 1}, pending={len(failed_dates)}")
+            logger.info(f"  retry {retry + 1}, pending={len(failed_dates)}")
             for date in failed_dates:
                 try:
                     time.sleep(2)
@@ -274,7 +277,7 @@ class DataAgent(BaseAgent):
         if not all_data:
             raise RuntimeError("[DataAgent] tushare quotes returned no data")
         if failed_dates:
-            print(f"[DataAgent] warning: unresolved trade dates={len(failed_dates)}")
+            logger.warning(f"unresolved trade dates={len(failed_dates)}")
 
         result = pd.concat(all_data, ignore_index=True)
         result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
@@ -283,7 +286,7 @@ class DataAgent(BaseAgent):
         return result
 
     def _fetch_raw_quotes_akshare(self) -> pd.DataFrame:
-        print("[DataAgent] quotes fetch provider=akshare (symbol loop)")
+        logger.info("quotes fetch provider=akshare (symbol loop)")
 
         stock_info = self.get_stock_info()
         if stock_info is None or stock_info.empty or "ts_code" not in stock_info.columns:
@@ -349,7 +352,7 @@ class DataAgent(BaseAgent):
                     all_data.append(frame)
 
                 if (i + 1) % 200 == 0:
-                    print(f"  processed {i + 1}/{len(codes)} symbols")
+                    logger.info(f"  processed {i + 1}/{len(codes)} symbols")
                 time.sleep(0.02)
             except Exception:
                 failed.append(code)
@@ -357,7 +360,7 @@ class DataAgent(BaseAgent):
         if not all_data:
             raise RuntimeError("[DataAgent] akshare quotes returned no data")
         if failed:
-            print(f"[DataAgent] warning: failed symbols={len(set(failed))}")
+            logger.warning(f"failed symbols={len(set(failed))}")
 
         result = pd.concat(all_data, ignore_index=True)
         result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
@@ -378,10 +381,10 @@ class DataAgent(BaseAgent):
                 or (self.daily_quotes_provider == "auto" and cached_provider in {"tushare", "akshare"})
             )
             if cache_match:
-                print(f"[DataAgent] raw quotes cache hit rows={len(cached)} provider={cached_provider or 'unknown'}")
+                logger.info(f"raw quotes cache hit rows={len(cached)} provider={cached_provider or 'unknown'}")
                 return cached
-            print(
-                f"[DataAgent] raw quotes cache provider mismatch "
+            logger.info(
+                f"raw quotes cache provider mismatch "
                 f"(cached={cached_provider or 'unknown'}, current={self.daily_quotes_provider}), rebuilding"
             )
 
@@ -398,13 +401,13 @@ class DataAgent(BaseAgent):
                         "end_date": END_DATE,
                     },
                 )
-                print(f"[DataAgent] raw quotes fetched rows={len(result)} provider={provider}")
+                logger.info(f"raw quotes fetched rows={len(result)} provider={provider}")
                 return result
             except Exception as e:
-                print(f"[DataAgent] raw quotes failed provider={provider}: {e}")
+                logger.warning(f"raw quotes failed provider={provider}: {e}")
 
         if cached is not None:
-            print("[DataAgent] warning: fallback to existing raw quotes cache")
+            logger.warning("fallback to existing raw quotes cache")
             return cached
         raise RuntimeError("[DataAgent] unable to fetch raw quotes from all providers")
 
@@ -412,12 +415,12 @@ class DataAgent(BaseAgent):
         cache_path = os.path.join(DATA_DIR, "adj_factors.parquet")
         cached = load_parquet(cache_path)
         if cached is not None:
-            print(f"[DataAgent] adj factors cache hit rows={len(cached)}")
+            logger.info(f"adj factors cache hit rows={len(cached)}")
             return cached
 
         self._require_pro_api("_get_adj_factors")
         trade_dates = self._get_trade_dates_from_daily()
-        print(f"[DataAgent] fetching adj factors trade_dates={len(trade_dates)}")
+        logger.info(f"fetching adj factors trade_dates={len(trade_dates)}")
 
         all_data = []
         failed_dates = []
@@ -429,17 +432,17 @@ class DataAgent(BaseAgent):
                     df = df[~df["ts_code"].str.endswith(".BJ")]
                     all_data.append(df)
                 if (i + 1) % 100 == 0:
-                    print(f"  processed {i + 1}/{len(trade_dates)}")
+                    logger.info(f"  processed {i + 1}/{len(trade_dates)}")
             except Exception as e:
                 failed_dates.append(date)
-                print(f"  fetch failed date={date}: {e}")
+                logger.warning(f"  fetch failed date={date}: {e}")
                 time.sleep(2)
 
         for retry in range(2):
             if not failed_dates:
                 break
             still_failed = []
-            print(f"  retry {retry + 1}, pending={len(failed_dates)}")
+            logger.info(f"  retry {retry + 1}, pending={len(failed_dates)}")
             for date in failed_dates:
                 try:
                     time.sleep(2)
@@ -457,18 +460,18 @@ class DataAgent(BaseAgent):
         if not all_data:
             raise RuntimeError("[DataAgent] adj factors returned no data")
         if failed_dates:
-            print(f"[DataAgent] warning: unresolved adj-factor dates={len(failed_dates)}")
+            logger.warning(f"unresolved adj-factor dates={len(failed_dates)}")
 
         result = pd.concat(all_data, ignore_index=True)
         result = result.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
         result["adj_factor"] = pd.to_numeric(result["adj_factor"], errors="coerce")
         save_parquet(result, cache_path)
-        print(f"[DataAgent] adj factors fetched rows={len(result)}")
+        logger.info(f"adj factors fetched rows={len(result)}")
         return result
 
     def _apply_price_adjustment(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.price_adj_mode == "none":
-            print("[DataAgent] PRICE_ADJ_MODE=none, skip price adjustment")
+            logger.info("PRICE_ADJ_MODE=none, skip price adjustment")
             return df
 
         adj_df = self._get_adj_factors()
@@ -488,7 +491,7 @@ class DataAgent(BaseAgent):
             work[col] = pd.to_numeric(work[col], errors="coerce") * scale
 
         work = work.drop(columns=["adj_factor"])
-        print(f"[DataAgent] applied price adjustment mode={self.price_adj_mode}")
+        logger.info(f"applied price adjustment mode={self.price_adj_mode}")
         return work
 
     def get_daily_quotes(self) -> pd.DataFrame:
@@ -505,18 +508,18 @@ class DataAgent(BaseAgent):
                 or (self.daily_quotes_provider == "auto" and cached_provider in {"tushare", "akshare"})
             )
             if cached_mode == self.price_adj_mode and provider_match:
-                print(
-                    f"[DataAgent] daily quotes cache hit rows={len(cached)} "
+                logger.info(
+                    f"daily quotes cache hit rows={len(cached)} "
                     f"mode={cached_mode}, provider={cached_provider or 'unknown'}"
                 )
                 return cached
 
             if self.pro is None and self.price_adj_mode != "none":
-                print("[DataAgent] warning: cannot rebuild adjusted prices without TUSHARE_TOKEN, reuse cache")
+                logger.warning("cannot rebuild adjusted prices without TUSHARE_TOKEN, reuse cache")
                 return cached
 
-            print(
-                f"[DataAgent] daily quotes cache mismatch "
+            logger.info(
+                f"daily quotes cache mismatch "
                 f"(mode {cached_mode}->{self.price_adj_mode}, "
                 f"provider {cached_provider or 'unknown'}->{self.daily_quotes_provider}), rebuilding"
             )
@@ -524,14 +527,14 @@ class DataAgent(BaseAgent):
         raw = self._fetch_raw_quotes()
         stock_info = self.get_stock_info()
 
-        print("[DataAgent] cleaning daily quotes...")
+        logger.info("cleaning daily quotes...")
         df = raw.copy()
         n_before = len(df)
 
         if len(stock_info) > 0 and "is_st" in stock_info.columns:
             st_codes = stock_info[stock_info["is_st"] == 1]["ts_code"].tolist()
             df = df[~df["ts_code"].isin(st_codes)]
-            print(f"  ST filtered rows={n_before - len(df)} symbols={len(st_codes)}")
+            logger.info(f"  ST filtered rows={n_before - len(df)} symbols={len(st_codes)}")
 
         # 退市股过滤：在退市日之后的行情数据应剔除（消除幸存者偏差）
         if len(stock_info) > 0 and "delist_date" in stock_info.columns:
@@ -543,7 +546,7 @@ class DataAgent(BaseAgent):
             df = df.drop(columns=["delist_date"])
             removed = n_before_delist - len(df)
             if removed > 0:
-                print(f"  退市股过滤 rows={removed}")
+                logger.info(f"  退市股过滤 rows={removed}")
 
         if len(stock_info) > 0 and "list_date" in stock_info.columns:
             df = df.merge(stock_info[["ts_code", "list_date"]], on="ts_code", how="left")
@@ -558,7 +561,7 @@ class DataAgent(BaseAgent):
             df["is_ipo_period"] = (listed_in_sample & after_list & (df["_ipo_rank"] <= 5)).astype(int)
 
             df = df.drop(columns=["list_date", "_ipo_rank"])
-            print(f"  IPO marked rows={int(df['is_ipo_period'].sum())}")
+            logger.info(f"  IPO marked rows={int(df['is_ipo_period'].sum())}")
         else:
             df["is_ipo_period"] = 0
 
@@ -575,7 +578,7 @@ class DataAgent(BaseAgent):
 
             df["is_limit_up"] = (df["pct_chg"] >= limit_pct).astype(int)
             df["is_limit_down"] = (df["pct_chg"] <= -limit_pct).astype(int)
-            print(
+            logger.info(
                 f"  limit marks: up={int(df['is_limit_up'].sum())}, "
                 f"down={int(df['is_limit_down'].sum())}"
             )
@@ -590,11 +593,11 @@ class DataAgent(BaseAgent):
         ).astype(int)
         n_suspended = int(df["is_suspended"].sum())
         if n_suspended > 0:
-            print(f"  停牌标记: {n_suspended} 行")
+            logger.info(f"  停牌标记: {n_suspended} 行")
 
         df = self._apply_price_adjustment(df)
 
-        print(f"  cleaning done rows: {n_before} -> {len(df)}")
+        logger.info(f"  cleaning done rows: {n_before} -> {len(df)}")
         save_parquet(df, cache_path)
 
         raw_meta = self._load_cache_meta(os.path.join(DATA_DIR, "daily_quotes_raw.meta.json"))
@@ -614,10 +617,10 @@ class DataAgent(BaseAgent):
         cache_path = os.path.join(DATA_DIR, "benchmark.parquet")
         cached = load_parquet(cache_path)
         if cached is not None:
-            print(f"[DataAgent] benchmark cache hit rows={len(cached)}")
+            logger.info(f"benchmark cache hit rows={len(cached)}")
             return cached
 
-        print("[DataAgent] fetching benchmark from AKShare sh000852")
+        logger.info("fetching benchmark from AKShare sh000852")
         df = ak.stock_zh_index_daily(symbol="sh000852")
         if df is None or df.empty:
             raise RuntimeError("[DataAgent] unable to fetch benchmark")
@@ -629,13 +632,13 @@ class DataAgent(BaseAgent):
         df = df.sort_values("trade_date").reset_index(drop=True)
         df["bench_close"] = pd.to_numeric(df["bench_close"], errors="coerce")
         save_parquet(df, cache_path)
-        print(f"[DataAgent] benchmark fetched rows={len(df)}")
+        logger.info(f"benchmark fetched rows={len(df)}")
         return df
 
     def update_all(self) -> dict:
-        print("=" * 50)
-        print("[DataAgent] full update start")
-        print("=" * 50)
+        logger.info("=" * 50)
+        logger.info("full update start")
+        logger.info("=" * 50)
 
         quotes = self.get_daily_quotes()
         benchmark = self.get_benchmark()
@@ -658,9 +661,9 @@ class DataAgent(BaseAgent):
         if "is_limit_up" in quotes.columns:
             summary["涨停标记"] = f"{int(quotes['is_limit_up'].sum())} 行"
 
-        print("\n[DataAgent] data update done:")
+        logger.info("data update done:")
         for k, v in summary.items():
-            print(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
 
         self.emit("data.ready", summary)
         return summary

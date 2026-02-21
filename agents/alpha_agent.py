@@ -12,6 +12,9 @@ import factors  # noqa: F401
 from factor_framework.registry import FactorRegistry
 from core.agent_base import BaseAgent
 from core.signal_bus import Signal
+from utils.log import get_logger
+
+logger = get_logger("agents.alpha_agent")
 
 
 class AlphaAgent(BaseAgent):
@@ -33,8 +36,7 @@ class AlphaAgent(BaseAgent):
         self.factor_weights = None
         self.excluded_factors = []
 
-        print("[AlphaAgent] init done")
-        print(f"  enabled factors: {list(self.enabled_factors.keys())}")
+        logger.info(f"初始化完成，启用因子: {list(self.enabled_factors.keys())}")
 
     def _on_factor_weight_update(self, signal: Signal):
         payload = signal.payload or {}
@@ -48,18 +50,18 @@ class AlphaAgent(BaseAgent):
         payload = signal.payload or {}
         degraded = payload.get("degraded_factors") or []
         if degraded:
-            print(f"  [AlphaAgent] degraded factors received: {degraded}")
+            logger.info(f"收到退化因子: {degraded}")
 
     def set_factor_weights(self, weights: dict, excluded: list = None):
         """Receive factor weights from monitor feedback."""
         self.factor_weights = weights
         self.excluded_factors = excluded or []
 
-        print("  [AlphaAgent] received IC-weight update:")
+        logger.info("收到 IC 权重更新:")
         for f, w in weights.items():
-            print(f"    {f}: {w:.1%}")
+            logger.info(f"  {f}: {w:.1%}")
         if self.excluded_factors:
-            print(f"  [AlphaAgent] excluded factors: {self.excluded_factors}")
+            logger.info(f"排除因子: {self.excluded_factors}")
 
     def composite_score(self, factor_scores: pd.DataFrame) -> pd.DataFrame:
         """Build composite alpha score using weighted or equal blend."""

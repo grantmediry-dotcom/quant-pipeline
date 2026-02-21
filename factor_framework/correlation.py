@@ -11,11 +11,18 @@
 """
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.helpers import get_month_end_dates
+from utils.log import get_logger
+
+logger = get_logger("factor_framework.correlation")
 
 
 # 相关性阈值：超过此值视为冗余对
@@ -41,8 +48,7 @@ def compute_factor_corr_matrix(
         return pd.DataFrame()
 
     # 取月末截面
-    df["month"] = df["trade_date"].str[:6]
-    month_ends = df.groupby("month")["trade_date"].max().values
+    month_ends = get_month_end_dates(df["trade_date"])
     monthly = df[df["trade_date"].isin(month_ends)]
 
     # 逐截面计算 rank 相关
@@ -179,11 +185,11 @@ def run_correlation_analysis(
             "recommended_removals": [...],
         }
     """
-    print("[CorrelationAnalysis] 计算因子截面 Rank 相关性矩阵...")
+    logger.info("计算因子截面 Rank 相关性矩阵...")
 
     corr_matrix = compute_factor_corr_matrix(factors_df, factor_names)
     if corr_matrix.empty:
-        print("[CorrelationAnalysis] 因子数不足，跳过相关性分析")
+        logger.info("因子数不足，跳过相关性分析")
         return {"corr_matrix": pd.DataFrame(), "redundant_pairs": [], "recommended_removals": []}
 
     # 保存相关性矩阵
@@ -193,25 +199,25 @@ def run_correlation_analysis(
     # 保存热力图
     heatmap_path = os.path.join(output_dir, "factor_correlation_heatmap.png")
     plot_corr_heatmap(corr_matrix, heatmap_path)
-    print(f"  相关性矩阵已保存: factor_correlation.csv")
-    print(f"  热力图已保存: factor_correlation_heatmap.png")
+    logger.info("相关性矩阵已保存: factor_correlation.csv")
+    logger.info("热力图已保存: factor_correlation_heatmap.png")
 
     # 检测冗余对
     redundant = find_redundant_pairs(corr_matrix, threshold)
     if redundant:
-        print(f"\n  [警告] 发现 {len(redundant)} 对冗余因子 (|corr| >= {threshold}):")
+        logger.warning(f"发现 {len(redundant)} 对冗余因子 (|corr| >= {threshold}):")
         for p in redundant:
-            print(f"    {p['factor_a']} <-> {p['factor_b']}: corr={p['corr']}")
+            logger.warning(f"  {p['factor_a']} <-> {p['factor_b']}: corr={p['corr']}")
     else:
-        print(f"  未发现冗余因子对 (阈值 |corr| >= {threshold})")
+        logger.info(f"未发现冗余因子对 (阈值 |corr| >= {threshold})")
 
     # 推荐去除
     removals = recommend_removals(redundant, factor_ir)
     if removals:
-        print(f"\n  [建议] 可考虑去除以下因子（冗余对中 IR 较弱者）:")
+        logger.info("建议去除以下因子（冗余对中 IR 较弱者）:")
         for r in removals:
             ir_val = factor_ir.get(r, 0)
-            print(f"    {r} (IR={ir_val:.4f})")
+            logger.info(f"  {r} (IR={ir_val:.4f})")
 
     return {
         "corr_matrix": corr_matrix,

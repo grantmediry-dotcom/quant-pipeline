@@ -140,6 +140,32 @@ class MonitorAgent(BaseAgent):
         self._write_text_report(metrics, factor_test)
         self._plot_nav_curve(nav_df)
         self._plot_excess_curve(nav_df)
+        self._plot_rolling_risk(nav_df)
+        self._plot_return_distribution(nav_df)
+
+        # HTML 交互式报告（P3c）
+        try:
+            from analytics.html_report import HTMLReportGenerator
+            HTMLReportGenerator().generate(
+                metrics, nav_df, factor_test,
+                os.path.join(OUTPUT_DIR, "interactive_report.html"),
+            )
+        except Exception as e:
+            logger.warning(f"HTML 报告生成失败: {e}")
+
+        # 告警检测（P3c）
+        try:
+            from analytics.alerts import AlertManager
+            alert_mgr = AlertManager()
+            alerts = alert_mgr.check_factor_degradation(factor_test)
+            dd_alert = alert_mgr.check_drawdown(nav_df)
+            if dd_alert:
+                alerts.append(dd_alert)
+            if alerts:
+                alert_mgr.save_alerts(alerts, OUTPUT_DIR)
+        except Exception as e:
+            logger.warning(f"告警检测失败: {e}")
+
         logger.info(f"报告已保存至 {OUTPUT_DIR}")
 
     def _write_text_report(self, metrics: dict, factor_test: pd.DataFrame):
@@ -202,3 +228,63 @@ class MonitorAgent(BaseAgent):
         fig.savefig(os.path.join(OUTPUT_DIR, "excess_nav_curve.png"), dpi=150)
         plt.close(fig)
         logger.info("saved: excess_nav_curve.png")
+
+    def _plot_rolling_risk(self, nav_df: pd.DataFrame):
+        """滚动波动率 + 滚动 Sharpe 双轴图"""
+        try:
+            from analytics.risk_metrics import RiskAnalyzer
+        except ImportError:
+            return
+
+        rolling_df = RiskAnalyzer().rolling_metrics(nav_df, windows=[30, 60])
+        if rolling_df.empty:
+            return
+
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+        dates = pd.to_datetime(rolling_df["trade_date"], format="%Y%m%d")
+
+        ax1.plot(dates, rolling_df["vol_30d"], label="30d Vol", color="#e74c3c", alpha=0.7)
+        ax1.plot(dates, rolling_df["vol_60d"], label="60d Vol", color="#e67e22", alpha=0.7)
+        ax1.set_ylabel("Annualized Volatility")
+        ax1.legend(loc="upper left")
+
+        ax2 = ax1.twinx()
+        ax2.plot(dates, rolling_df["sharpe_60d"], label="60d Sharpe", color="#3498db", alpha=0.7)
+        ax2.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
+        ax2.set_ylabel("Rolling Sharpe")
+        ax2.legend(loc="upper right")
+
+        ax1.set_title("Rolling Risk Metrics")
+        ax1.grid(True, alpha=0.3)
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+        fig.autofmt_xdate()
+        fig.tight_layout()
+        fig.savefig(os.path.join(OUTPUT_DIR, "rolling_risk.png"), dpi=150)
+        plt.close(fig)
+        logger.info("saved: rolling_risk.png")
+
+    def _plot_return_distribution(self, nav_df: pd.DataFrame):
+        """收益率分布直方图"""
+        daily_ret = nav_df["nav"].pct_change().dropna()
+        if len(daily_ret) < 20:
+            return
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.hist(daily_ret * 100, bins=50, density=True, alpha=0.7, color="#3498db", edgecolor="white")
+
+        # 拟合正态分布叠加
+        import numpy as np
+        mu, sigma = daily_ret.mean() * 100, daily_ret.std() * 100
+        x = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 100)
+        from scipy.stats import norm
+        ax.plot(x, norm.pdf(x, mu, sigma), "r-", linewidth=2, label=f"Normal(μ={mu:.2f}%, σ={sigma:.2f}%)")
+
+        ax.set_xlabel("Daily Return (%)")
+        ax.set_ylabel("Density")
+        ax.set_title("Daily Return Distribution")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(os.path.join(OUTPUT_DIR, "return_distribution.png"), dpi=150)
+        plt.close(fig)
+        logger.info("saved: return_distribution.png")

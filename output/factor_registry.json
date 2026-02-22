@@ -17,11 +17,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0607,
-    "eval_ir": -0.4612
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "reversal_5d": {
     "name": "reversal_5d",
@@ -41,8 +41,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": false,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
     "eval_ic_mean": null,
     "eval_ir": null
@@ -67,11 +67,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.1027,
-    "eval_ir": -0.6473
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "volatility_20d": {
     "name": "volatility_20d",
@@ -92,11 +92,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.1046,
-    "eval_ir": 0.6074
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "size_factor": {
     "name": "size_factor",
@@ -118,11 +118,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0936,
-    "eval_ir": 0.6117
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "swim_against_tide": {
     "name": "swim_against_tide",
@@ -143,11 +143,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0341,
-    "eval_ir": 0.496
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "illiquidity_20d": {
     "name": "illiquidity_20d",
@@ -170,11 +170,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0693,
-    "eval_ir": 0.4461
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "max_return_1m": {
     "name": "max_return_1m",
@@ -195,11 +195,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0958,
-    "eval_ir": -0.69
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "vwap_ratio_5d60d": {
     "name": "vwap_ratio_5d60d",
@@ -222,11 +222,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0701,
-    "eval_ir": -0.4627
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "amount_ratio_1m3m": {
     "name": "amount_ratio_1m3m",
@@ -248,11 +248,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0598,
-    "eval_ir": -0.4821
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "highlow_ratio_20d": {
     "name": "highlow_ratio_20d",
@@ -274,11 +274,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0921,
-    "eval_ir": -0.55
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "price_volume_corr_20d": {
     "name": "price_volume_corr_20d",
@@ -300,11 +300,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": -0.0508,
-    "eval_ir": -0.5544
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "volume_std_5d": {
     "name": "volume_std_5d",
@@ -325,11 +325,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0493,
-    "eval_ir": 0.4378
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "open_vol_rank_div": {
     "name": "open_vol_rank_div",
@@ -348,8 +348,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": false,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
     "eval_ic_mean": null,
     "eval_ir": null
@@ -375,11 +375,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0348,
-    "eval_ir": 0.463
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "highlow_close_sum_5d": {
     "name": "highlow_close_sum_5d",
@@ -402,8 +402,8 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": false,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
     "eval_ic_mean": null,
     "eval_ir": null
@@ -429,11 +429,11 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0631,
-    "eval_ir": 0.6664
+    "eval_ic_mean": null,
+    "eval_ir": null
   },
   "vwap_vol_cov_5d": {
     "name": "vwap_vol_cov_5d",
@@ -456,10 +456,10 @@
     "version": "1.0.0",
     "status": "research",
     "enabled": true,
-    "created_at": "2026-02-17 18:15:01",
-    "updated_at": "2026-02-17 18:15:01",
+    "created_at": "2026-02-21 20:14:33",
+    "updated_at": "2026-02-21 20:14:33",
     "lineage": {},
-    "eval_ic_mean": 0.0662,
-    "eval_ir": 0.7209
+    "eval_ic_mean": null,
+    "eval_ir": null
   }
 }

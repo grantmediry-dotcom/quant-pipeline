@@ -35,6 +35,7 @@ class AlphaAgent(BaseAgent):
         # None means equal-weight blend fallback.
         self.factor_weights = None
         self.excluded_factors = []
+        self.regime_adjust = {}  # P2d: 状态驱动权重调节 {factor_name: multiplier}
 
         logger.info(f"初始化完成，启用因子: {list(self.enabled_factors.keys())}")
 
@@ -88,7 +89,9 @@ class AlphaAgent(BaseAgent):
             df["alpha_score"] = 0.0
             for fname, col_name in zip(available, adjusted_cols):
                 w = self.factor_weights.get(fname, 0.0)
-                df["alpha_score"] += df[col_name] * w
+                # P2d: 状态驱动权重调节
+                regime_mult = self.regime_adjust.get(fname, 1.0)
+                df["alpha_score"] += df[col_name] * w * regime_mult
         else:
             df["alpha_score"] = df[adjusted_cols].mean(axis=1)
 

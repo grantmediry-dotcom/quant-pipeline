@@ -35,6 +35,9 @@ class BacktestAgent(BaseAgent):
             self.suspended = daily_quotes[["ts_code", "trade_date", "is_suspended"]].copy()
         else:
             self.suspended = None
+        # 归因数据（P2a）
+        self.holdings_history = []
+        self.cost_history = []
         logger.info("初始化完成")
 
     def run(self, holdings_by_date: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -57,6 +60,8 @@ class BacktestAgent(BaseAgent):
         current_holdings = None
         pending_holdings = None  # 待生效的新持仓
         total_cost = 0.0
+        self.holdings_history = []
+        self.cost_history = []
 
         for i, td in enumerate(all_trade_dates):
             # 先应用上一日挂起的调仓（T+1 生效）
@@ -66,15 +71,24 @@ class BacktestAgent(BaseAgent):
                     current_holdings, pending_holdings, td
                 )
                 # 计算换手成本
-                cost = self._calc_turnover_cost(current_holdings, actual_new)
+                cost, cost_detail = self._calc_turnover_cost(current_holdings, actual_new)
                 current_nav *= (1 - cost)
                 total_cost += cost
                 current_holdings = actual_new
                 pending_holdings = None
 
+                # 记录归因数据
+                self.cost_history.append({"date": td, **cost_detail})
+
             # 如果今天是调仓日，挂起新持仓（明天生效）
             if td in holdings_by_date:
                 pending_holdings = holdings_by_date[td]
+                # 记录调仓持仓（归因用）
+                self.holdings_history.append({
+                    "date": td,
+                    "holdings": holdings_by_date[td].copy(),
+                    "cost": 0.0,  # 成本在 T+1 生效时更新
+                })
 
             if current_holdings is None:
                 continue
@@ -190,14 +204,19 @@ class BacktestAgent(BaseAgent):
         return result
 
     @staticmethod
-    def _calc_turnover_cost(old_holdings, new_holdings) -> float:
+    def _calc_turnover_cost(old_holdings, new_holdings) -> tuple[float, dict]:
         """
         计算调仓换手成本
         买入成本 TRADE_COST_BUY，卖出成本 TRADE_COST_SELL
+
+        返回: (总成本, 明细dict)
         """
         if old_holdings is None:
             # 首次建仓，只有买入成本
-            return TRADE_COST_BUY
+            return TRADE_COST_BUY, {
+                "buy_cost": TRADE_COST_BUY, "sell_cost": 0.0, "total_cost": TRADE_COST_BUY,
+                "buy_amount": 1.0, "sell_amount": 0.0,
+            }
 
         old = old_holdings.set_index("ts_code")["weight"]
         new = new_holdings.set_index("ts_code")["weight"]
@@ -212,8 +231,21 @@ class BacktestAgent(BaseAgent):
         buy_amount = delta[delta > 0].sum()    # 新买入的权重
         sell_amount = (-delta[delta < 0]).sum()  # 卖出的权重
 
-        cost = buy_amount * TRADE_COST_BUY + sell_amount * TRADE_COST_SELL
-        return cost
+        buy_cost = buy_amount * TRADE_COST_BUY
+        sell_cost = sell_amount * TRADE_COST_SELL
+        cost = buy_cost + sell_cost
+        return cost, {
+            "buy_cost": round(buy_cost, 6), "sell_cost": round(sell_cost, 6),
+            "total_cost": round(cost, 6),
+            "buy_amount": round(buy_amount, 4), "sell_amount": round(sell_amount, 4),
+        }
+
+    def get_attribution_data(self) -> dict:
+        """返回归因所需的中间数据"""
+        return {
+            "holdings_history": self.holdings_history,
+            "cost_history": self.cost_history,
+        }
 
     @staticmethod
     def calc_metrics(nav_df: pd.DataFrame) -> dict:
@@ -261,4 +293,13 @@ class BacktestAgent(BaseAgent):
             "最大回撤": f"{max_dd:.2%}",
             "超额最大回撤": f"{excess_max_dd:.2%}",
         }
+
+        # 扩展风险指标（P2b）
+        try:
+            from analytics.risk_metrics import RiskAnalyzer
+            risk_report = RiskAnalyzer().full_report(nav_df)
+            metrics.update(risk_report)
+        except ImportError:
+            pass
+
         return metrics

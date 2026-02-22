@@ -34,5 +34,15 @@ API_DELAY = 0.35               # 每次请求间隔（秒）
 TRADE_COST_BUY = 0.0015    # 买入成本：佣金0.025% + 滑点0.1% ≈ 0.15%
 TRADE_COST_SELL = 0.0025   # 卖出成本：佣金0.025% + 印花税0.1% + 滑点0.1% ≈ 0.25%
 
+# 组合优化（P2c）
+# "equal_weight" | "mvo" | "risk_parity"
+PORTFOLIO_METHOD = os.getenv("PORTFOLIO_METHOD", "equal_weight").strip().lower()
+MVO_MAX_WEIGHT = 0.10              # MVO 单只股票最大权重
+MVO_RISK_AVERSION = 1.0            # MVO 风险厌恶系数（越大越保守）
+RISK_PARITY_MAX_WEIGHT = 0.15      # 风险平价最大权重
+
+# 动态策略（P2d）
+REGIME_DETECTION_ENABLED = os.getenv("REGIME_DETECTION", "false").strip().lower() == "true"
+
 # 因子配置已迁移至 factor_framework + factors/ 模块（装饰器注册模式）
 # 新增因子只需在 factors/ 下创建文件，用 @register_factor 注册即可

@@ -218,7 +218,7 @@ class WalkForwardValidator:
             active_weights = {}
 
         # 5. 测试期：选股
-        portfolio_agent = PortfolioAgent()
+        portfolio_agent = PortfolioAgent(daily_quotes=daily_quotes)
         test_month_ends = [
             d for d in all_month_ends
             if d > train_range[1] and d <= test_range[1]
@@ -314,7 +314,7 @@ class WalkForwardValidator:
                 weight_signal["weights"], weight_signal.get("excluded", [])
             )
 
-        portfolio_agent = PortfolioAgent()
+        portfolio_agent = PortfolioAgent(daily_quotes=daily_quotes)
         holdings_by_date = {}
         for date in all_month_ends:
             scores = factor_agent.get_factor_scores(date)
